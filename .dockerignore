@@ -1,0 +1,11 @@
+node_modules
+__pycache__
+.pytest_cache
+*.pyc
+.session-frecency
+session-zx.log
+test_output
+.git
+.gitignore
+*.md
+!README.md

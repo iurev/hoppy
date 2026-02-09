@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  test:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - TERM=xterm-256color
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+    command: pytest -v

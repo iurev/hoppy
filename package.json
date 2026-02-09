@@ -1,0 +1,19 @@
+{
+  "name": "session-zx",
+  "version": "1.0.0",
+  "description": "Tmux session manager with fzf interface",
+  "type": "module",
+  "main": "session-zx.mjs",
+  "scripts": {
+    "test": "pytest -v",
+    "test:watch": "pytest -v --watch"
+  },
+  "dependencies": {
+    "zx": "^7.2.3",
+    "node-localstorage": "^3.0.5",
+    "@getstation/frecency": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
