@@ -33,8 +33,22 @@ COPY pyproject.toml ./
 # Install Python dependencies with uv
 RUN /root/.local/bin/uv pip install --system -r pyproject.toml
 
-# Create minimal tmux config
-RUN mkdir -p /root && echo 'set -g status off' > /root/.tmux.conf
+# Create tmux config with keybindings
+RUN mkdir -p /root && cat > /root/.tmux.conf << 'EOF'
+# Minimal tmux config for testing
+set -g status off
+set -g default-terminal "screen-256color"
+
+# Keybindings for session-zx.mjs script
+# Ctrl+Shift+L to switch sessions
+bind-key -n C-S-l run-shell "/app/session-zx.mjs popup-switch"
+
+# Ctrl+Shift+O to switch to CAPITAL letter sessions only
+bind-key -n C-S-o run-shell "/app/session-zx.mjs popup-capital-switch"
+
+# Ctrl+Shift+P to switch sessions filtered by git worktrees
+bind-key -n C-S-p run-shell "/app/session-zx.mjs popup-worktree-switch"
+EOF
 
 # Set environment variables
 ENV TERM=xterm-256color
