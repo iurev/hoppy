@@ -1,4 +1,4 @@
-#!/home/yu/.asdf/installs/nodejs/24.7.0/bin/node
+#!/usr/bin/env node
 
 import { $, argv } from 'zx';
 import { createRequire } from 'module';
@@ -278,8 +278,13 @@ if (action === 'new') {
   await logEvent(`action=new: creating new session: ${sessionName}`);
   await $`tmux new-session -d -s ${sessionName}`;
   await logEvent(`action=new: switching to session: ${sessionName}`);
-  await $`tmux switch-client -t ${sessionName}`;
-  await logEvent('action=new: complete');
+  try {
+    await $`tmux switch-client -t ${sessionName}`;
+    await logEvent('action=new: complete');
+  } catch (error) {
+    await logEvent(`action=new: switch-client failed: ${error.message}`);
+    process.exit(1);
+  }
   process.exit(0);
 }
 
@@ -520,13 +525,18 @@ if (action === 'switch') {
   }
 
   await logEvent(`action=switch: switching to ${targets[0]}`);
-  await $`tmux switch-client -t ${targets[0]}`;
-
-  // Record the switch in frecency
-  sessionFrecency.save({ selectedId: targets[0] });
-  await logEvent(`action=switch: recorded frecency for ${targets[0]}`);
-
-  await logEvent('action=switch: complete');
+  try {
+    await $`tmux switch-client -t ${targets[0]}`;
+    // Record the switch in frecency
+    sessionFrecency.save({ selectedId: targets[0] });
+    await logEvent(`action=switch: recorded frecency for ${targets[0]}`);
+    await logEvent('action=switch: complete');
+  } catch (error) {
+    await logEvent(`action=switch: switch-client failed: ${error.message}`);
+    if (error.stderr) await logEvent(`action=switch: stderr: ${error.stderr}`);
+    if (error.stdout) await logEvent(`action=switch: stdout: ${error.stdout}`);
+    process.exit(1);
+  }
   process.exit(0);
 }
 

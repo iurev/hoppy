@@ -1,209 +1,324 @@
-"""REAL integration tests that actually test behavior, not just "script ran"."""
+"""REAL integration tests that actually test behavior, not just "script ran".
+
+Refactored to strictly follow guideline.md and use TmuxSession fixture for REAL client simulation.
+"""
 import os
 import time
 import pytest
+import shutil
+import subprocess
 
+# Helper to run shell commands
+def run(cmd):
+    return os.system(cmd)
 
-def test_session_switch_actually_works():
-    """Test that we can actually SWITCH from one session to another."""
-    # Create two sessions
-    os.system("tmux new-session -d -s switch_from")
-    os.system("tmux new-session -d -s switch_to")
+@pytest.fixture
+def git_repo_with_worktrees(tmp_path):
+    """Setup a git repo with worktrees for testing worktree-switch."""
+    # Create main repo
+    repo_dir = tmp_path / "main_repo"
+    repo_dir.mkdir()
+    
+    cwd = os.getcwd()
+    try:
+        os.chdir(repo_dir)
+        subprocess.run(["git", "init"], check=True)
+        # Fix for CI/Docker: Set identity
+        subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], check=True)
+        
+        subprocess.run(["git", "commit", "--allow-empty", "-m", "Initial commit"], check=True)
+        
+        # Create worktree
+        wt_dir = tmp_path / "wt_branch"
+        subprocess.run(["git", "worktree", "add", str(wt_dir), "-b", "feature/branch"], check=True)
+        
+        yield str(repo_dir), str(wt_dir)
+    finally:
+        os.chdir(cwd)
+
+def test_session_switch_user_workflow(tmux):
+    """
+    Test the standard Ctrl+Shift+L user workflow (popup-switch).
+    """
+    # 'tmux' fixture provides a running client attached to 'test_session'
+    client_pid = tmux.process.pid
+    
+    # Create target session
+    run("tmux new-session -d -s switch_to")
     time.sleep(0.5)
 
-    try:
-        # Verify we start in switch_from
-        os.system("tmux switch-client -t switch_from 2>/dev/null")
-        time.sleep(0.2)
+    # Initial state check
+    assert "switch_to" not in os.popen("tmux list-clients -F '#{session_name}'").read()
 
-        current = os.popen("tmux display-message -t switch_from -p '#S'").read().strip()
-        assert current == "switch_from", f"Expected switch_from, got {current}"
+    # SIMULATE KEYBINDING: Ctrl+Shift+L triggers popup-switch
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
 
-        # Run script and select the OTHER session
-        os.system("tmux send-keys -t switch_from 'node /app/session-zx.mjs switch' Enter")
-        time.sleep(1.0)
+    # User types 'switch_to'
+    tmux.send_keys("switch_to")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
 
-        # Type 'switch_to' to filter and press Enter to select
-        os.system("tmux send-keys -t switch_from 'switch_to'")
-        time.sleep(0.3)
-        os.system("tmux send-keys -t switch_from Enter")
+    # VERIFY RESULT
+    attached_sessions = os.popen("tmux list-clients -F '#{session_name}'").read()
+    assert "switch_to" in attached_sessions, f"No client attached to switch_to. Attached: {attached_sessions}"
+
+    # Cleanup
+    run("tmux kill-session -t switch_to 2>/dev/null")
+
+def test_capital_switch_user_workflow(tmux):
+    """
+    Test the Capital Switch workflow (Ctrl+Shift+O).
+    """
+    run("tmux new-session -d -s UPPER")
+    time.sleep(0.5)
+
+    # Trigger popup-capital-switch
+    tmux.send_keys("node /app/session-zx.mjs popup-capital-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    # Select UPPER
+    tmux.send_keys("UPPER")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    # Verify
+    attached_sessions = os.popen("tmux list-clients -F '#{session_name}'").read()
+    assert "UPPER" in attached_sessions, "Client did not switch to UPPER"
+
+    run("tmux kill-session -t UPPER 2>/dev/null")
+
+def test_worktree_switch_user_workflow(tmux, git_repo_with_worktrees):
+    """
+    Test the Worktree Switch workflow (Ctrl+Shift+P).
+    """
+    main_path, wt_path = git_repo_with_worktrees
+    
+    tmux.send_keys(f"cd {main_path}")
+    tmux.press_enter()
+    time.sleep(0.5)
+    
+    # Create target session
+    run(f"tmux new-session -d -s feature -c {wt_path}")
+    run("tmux new-session -d -s other -c /tmp")
+    time.sleep(0.5)
+
+    # Trigger popup-worktree-switch
+    tmux.send_keys("node /app/session-zx.mjs popup-worktree-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    # Filter for 'feature'
+    tmux.send_keys("feature")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    # Verify switch to feature
+    attached_sessions = os.popen("tmux list-clients -F '#{session_name}'").read()
+    assert "feature" in attached_sessions, "Did not switch to worktree session"
+    
+    # Test Isolation
+    tmux.send_keys("node /app/session-zx.mjs popup-worktree-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+    
+    tmux.send_keys("other") 
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+    
+    attached_sessions = os.popen("tmux list-clients -F '#{session_name}'").read()
+    assert "feature" in attached_sessions, "Should not have switched to unrelated session"
+
+    run("tmux kill-session -t feature 2>/dev/null")
+    run("tmux kill-session -t other 2>/dev/null")
+
+def test_number_key_quick_select(tmux):
+    """Test that pressing number keys in popup actually selects the specific session."""
+    # Ensure a clean state for frecency so order is predictable (num_1 then num_2)
+    run("rm -rf .session-frecency")
+    
+    run("tmux new-session -d -s num_1")
+    run("tmux new-session -d -s num_2")
+    time.sleep(0.5)
+
+    # Initial: we are in test_session
+    attached_before = os.popen("tmux list-clients -F '#{session_name}'").read().strip()
+    assert attached_before == "test_session"
+
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    # In a fresh state:
+    # [1] test_session (current)
+    # [2] num_1
+    # [3] num_2
+    tmux.press_number(2)
+    time.sleep(1.0)
+
+    attached_after = os.popen("tmux list-clients -F '#{session_name}'").read().strip()
+    assert attached_after == "num_1", f"Expected to switch to num_1, but now in {attached_after}"
+
+    run("tmux kill-session -t num_1 2>/dev/null")
+    run("tmux kill-session -t num_2 2>/dev/null")
+
+def test_kill_session_workflow(tmux):
+    """
+    Test killing a session via DEL key in the popup.
+    """
+    run("tmux new-session -d -s victim_session")
+    time.sleep(0.5)
+
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    tmux.send_keys("victim_session")
+    time.sleep(0.5)
+
+    # Press DEL (Send explicit Delete sequence for fzf)
+    tmux.send_keys('\x1b[3~')
+    time.sleep(1.0)
+
+    # NO confirmation for 'switch' action DEL binding
+    # Verify victim is gone
+    sessions = os.popen("tmux list-sessions -F '#S'").read()
+    assert "victim_session" not in sessions
+
+def test_new_session_action(tmux):
+    """
+    Test creating a new session via the 'new' action.
+    """
+    tmux.send_keys("node /app/session-zx.mjs new")
+    tmux.press_enter()
+    time.sleep(2.0) # Wait for split window
+    
+    # Write to FIFO directly to simulate user input
+    # This bypasses the split-window UI which is flaky in tests
+    run("echo brand_new_session > /tmp/tmux_fzf_session_name")
+    time.sleep(1.0)
+    
+    attached = os.popen("tmux list-clients -F '#{session_name}'").read()
+    assert "brand_new_session" in attached
+    
+    run("tmux kill-session -t brand_new_session 2>/dev/null")
+
+def test_rename_session_action(tmux):
+    """Test renaming current session."""
+    tmux.send_keys("node /app/session-zx.mjs rename")
+    tmux.press_enter()
+    time.sleep(2.0) # Wait for script to block on FIFO
+    
+    # Write to FIFO
+    run("echo renamed_session > /tmp/tmux_fzf_session_name")
+    time.sleep(0.5)
+    
+    # Select target (current session)
+    # fzf appears now
+    time.sleep(0.5)
+    tmux.send_keys("test_session")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+    
+    sessions = os.popen("tmux list-sessions -F '#S'").read()
+    assert "renamed_session" in sessions
+    assert "test_session" not in sessions
+    
+    run("tmux kill-session -t renamed_session 2>/dev/null")
+
+def test_escape_cancels_action(tmux):
+    """Test that ESC closes the popup/fzf and remains in the current session."""
+    # Start in test_session
+    attached_before = os.popen("tmux list-clients -F '#{session_name}'").read().strip()
+    assert attached_before == "test_session"
+    
+    # Create another session to ensure we don't accidentally switch to it
+    run("tmux new-session -d -s other_session")
+    
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+    
+    # Type something to filter
+    tmux.send_keys("other_session")
+    time.sleep(0.5)
+    
+    # Press ESC
+    tmux.press_escape()
+    time.sleep(0.5)
+    
+    # Verify we are STILL in test_session and NOT in other_session
+    attached_after = os.popen("tmux list-clients -F '#{session_name}'").read().strip()
+    assert attached_after == "test_session", f"Expected to stay in test_session, but now in {attached_after}"
+    
+    run("tmux kill-session -t other_session 2>/dev/null")
+
+def test_menu_cancel_option(tmux):
+    """Test that selecting [cancel] from the action menu works."""
+    attached_before = os.popen("tmux list-clients -F '#{session_name}'").read().strip()
+    
+    # Run script without args to show action menu
+    tmux.send_keys("node /app/session-zx.mjs")
+    tmux.press_enter()
+    time.sleep(1.0)
+    
+    # Type cancel to filter for [cancel]
+    tmux.send_keys("cancel")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(0.5)
+    
+    # Verify we are still in the same session
+    attached_after = os.popen("tmux list-clients -F '#{session_name}'").read().strip()
+    assert attached_after == attached_before
+
+def test_frecency_sorting(tmux):
+    """
+    Test that frequently accessed sessions appear first in the list.
+    """
+    run("tmux new-session -d -s rarely")
+    run("tmux new-session -d -s often")
+    time.sleep(0.5)
+
+    # Boost 'often' session score by switching to it multiple times using the script
+    # We use popup-switch because it's the standard entry point
+    
+    for _ in range(3):
+        # We are currently in 'test_session' (from fixture) or 'often'
+        
+        # Open popup
+        tmux.send_keys("node /app/session-zx.mjs popup-switch")
+        tmux.press_enter()
+        time.sleep(1.0) # Wait for fzf
+        
+        # Filter for 'often'
+        tmux.send_keys("often")
+        time.sleep(0.5)
+        tmux.press_enter()
+        time.sleep(1.0) # Wait for switch
+        
+        # Switch back to 'test_session' using raw tmux for speed/reset
+        # This ensures we are ready for the next iteration's "switch to often"
+        run("tmux switch-client -t test_session")
         time.sleep(0.5)
 
-        # Check current session - should have switched
-        current = os.popen("tmux display-message -p '#S'").read().strip()
+    # Now check the order using reload-sessions
+    output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+    lines = output.strip().split('\n')
+    
+    often_idx = next((i for i, l in enumerate(lines) if "often" in l), -1)
+    rarely_idx = next((i for i, l in enumerate(lines) if "rarely" in l), -1)
+            
+    assert often_idx != -1 and rarely_idx != -1, "Sessions not found in output"
+    assert often_idx < rarely_idx, f"Frecency failed: 'often' ({often_idx}) should be before 'rarely' ({rarely_idx})"
 
-        # Verify switch happened
-        assert current == "switch_to", f"Did not switch! Still in {current}"
-
-    finally:
-        os.system("tmux kill-session -t switch_from 2>/dev/null")
-        os.system("tmux kill-session -t switch_to 2>/dev/null")
-
-
-def test_number_key_quick_select():
-    """Test that pressing number 2 actually selects the 2nd session."""
-    # Create 3 sessions in specific order
-    os.system("tmux new-session -d -s num_first")
-    os.system("tmux new-session -d -s num_second")
-    os.system("tmux new-session -d -s num_third")
-    time.sleep(0.5)
-
-    try:
-        # Start in first session
-        os.system("tmux switch-client -t num_first 2>/dev/null")
-
-        # Run script
-        os.system("tmux send-keys -t num_first 'node /app/session-zx.mjs switch' Enter")
-        time.sleep(1.0)
-
-        # Press '2' to select second item
-        os.system("tmux send-keys -t num_first '2'")
-        time.sleep(0.8)
-
-        # Check if we switched (might not work in detached mode but test the key was processed)
-        # At minimum, script should have handled the '2' key
-        current = os.popen("tmux display-message -p '#S' 2>/dev/null").read().strip()
-
-        # If switching worked, we'd be in a different session
-        # If not, at least verify the script didn't crash
-        assert current in ["num_first", "num_second", "num_third"], \
-            f"Script crashed or session invalid: {current}"
-
-    finally:
-        os.system("tmux kill-session -t num_first 2>/dev/null")
-        os.system("tmux kill-session -t num_second 2>/dev/null")
-        os.system("tmux kill-session -t num_third 2>/dev/null")
-
-
-def test_kill_session_actually_removes_it():
-    """Test that DEL key actually kills a session."""
-    # Create sessions
-    os.system("tmux new-session -d -s kill_me")
-    os.system("tmux new-session -d -s keep_me")
-    time.sleep(0.5)
-
-    try:
-        # Verify both exist
-        sessions_before = os.popen("tmux list-sessions").read()
-        assert "kill_me" in sessions_before
-        assert "keep_me" in sessions_before
-
-        # Run script from keep_me
-        os.system("tmux send-keys -t keep_me 'node /app/session-zx.mjs switch' Enter")
-        time.sleep(1.0)
-
-        # Filter to kill_me
-        os.system("tmux send-keys -t keep_me 'kill_me'")
-        time.sleep(0.3)
-
-        # Press DEL to kill it
-        os.system("tmux send-keys -t keep_me DEL")
-        time.sleep(0.5)
-
-        # Confirm kill (press 'y')
-        os.system("tmux send-keys -t keep_me 'y'")
-        time.sleep(0.5)
-
-        # Verify kill_me is gone
-        sessions_after = os.popen("tmux list-sessions 2>&1").read()
-        assert "kill_me" not in sessions_after, "Session was not killed!"
-        assert "keep_me" in sessions_after, "Wrong session was killed!"
-
-    finally:
-        os.system("tmux kill-session -t kill_me 2>/dev/null")
-        os.system("tmux kill-session -t keep_me 2>/dev/null")
-
-
-def test_escape_returns_to_shell():
-    """Test that ESC actually returns to shell prompt."""
-    os.system("tmux new-session -d -s escape_test")
-    time.sleep(0.5)
-
-    try:
-        # Capture initial state
-        before = os.popen("tmux capture-pane -t escape_test -p").read()
-
-        # Run script
-        os.system("tmux send-keys -t escape_test 'node /app/session-zx.mjs switch' Enter")
-        time.sleep(1.0)
-
-        # Should show fzf now
-        during = os.popen("tmux capture-pane -t escape_test -p").read()
-        assert ">" in during, "fzf not showing"
-
-        # Press ESC
-        os.system("tmux send-keys -t escape_test Escape")
-        time.sleep(0.5)
-
-        # Should be back at shell
-        after = os.popen("tmux capture-pane -t escape_test -p").read()
-
-        # Verify fzf is gone and we have a prompt
-        assert ">" not in after or "#" in after or "$" in after, \
-            "Did not return to shell prompt"
-
-    finally:
-        os.system("tmux kill-session -t escape_test 2>/dev/null")
-
-
-def test_session_list_shows_all_sessions():
-    """Test that reload-sessions action lists all created sessions."""
-    # Create 5 specific sessions
-    sessions = ["alpha", "beta", "gamma", "delta", "epsilon"]
-    for s in sessions:
-        os.system(f"tmux new-session -d -s {s}")
-    time.sleep(0.5)
-
-    try:
-        # Get script output
-        output = os.popen("node /app/session-zx.mjs reload-sessions").read()
-
-        # Verify ALL sessions are listed
-        for s in sessions:
-            assert s in output, f"Session {s} not in output"
-
-        # Verify formatting
-        assert "[" in output and "]" in output, "No number prefixes"
-        assert "@" in output, "No delimiter"
-        assert "windows" in output, "No window count"
-
-    finally:
-        for s in sessions:
-            os.system(f"tmux kill-session -t {s} 2>/dev/null")
-
-
-def test_frecency_sorting():
-    """Test that frequently accessed sessions appear first."""
-    # Create sessions
-    os.system("tmux new-session -d -s freq_rarely")
-    os.system("tmux new-session -d -s freq_often")
-    time.sleep(0.5)
-
-    try:
-        # Switch to freq_often multiple times to boost frecency
-        for _ in range(3):
-            os.system("tmux switch-client -t freq_often 2>/dev/null")
-            time.sleep(0.2)
-
-        # Get session list
-        output = os.popen("node /app/session-zx.mjs reload-sessions").read()
-        lines = [l for l in output.split('\n') if l.strip()]
-
-        # freq_often should appear before freq_rarely due to frecency
-        often_index = -1
-        rarely_index = -1
-
-        for i, line in enumerate(lines):
-            if "freq_often" in line:
-                often_index = i
-            if "freq_rarely" in line:
-                rarely_index = i
-
-        # If both found, often should come first (lower index)
-        if often_index >= 0 and rarely_index >= 0:
-            assert often_index < rarely_index, \
-                f"Frecency not working: often at {often_index}, rarely at {rarely_index}"
-
-    finally:
-        os.system("tmux kill-session -t freq_rarely 2>/dev/null")
-        os.system("tmux kill-session -t freq_often 2>/dev/null")
+    run("tmux kill-session -t rarely 2>/dev/null")
+    run("tmux kill-session -t often 2>/dev/null")

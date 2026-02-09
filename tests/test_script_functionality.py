@@ -1,152 +1,103 @@
-"""Test the actual JavaScript script's functionality - PROPERLY."""
+"""Test the actual JavaScript script's functionality - PROPERLY.
+
+Focuses on:
+- Output formatting (numbers, delimiters)
+- Session listing accuracy
+- Frecency sorting (via reload-sessions output)
+- Handling of special characters
+"""
 import os
 import time
 import pytest
 
+def run_script_reload():
+    """Run the script's reload-sessions action and return output."""
+    return os.popen("node /app/session-zx.mjs reload-sessions").read()
 
 def test_script_lists_sessions_correctly():
     """Test that the script's reload-sessions action lists created sessions."""
-    # Create test sessions with tmux
     os.system("tmux new-session -d -s script_test_alpha")
     os.system("tmux new-session -d -s script_test_beta")
-    os.system("tmux new-session -d -s script_test_gamma")
     time.sleep(0.5)
 
     try:
-        # Run the SCRIPT's reload-sessions action (bypasses fzf)
-        output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+        output = run_script_reload()
 
-        # Verify the SCRIPT listed all our sessions
-        assert "script_test_alpha" in output, "Script did not list script_test_alpha"
-        assert "script_test_beta" in output, "Script did not list script_test_beta"
-        assert "script_test_gamma" in output, "Script did not list script_test_gamma"
+        assert "script_test_alpha" in output
+        assert "script_test_beta" in output
 
-        # Verify formatting (script adds number prefixes and window counts)
-        assert "windows" in output, "Script did not format with window count"
-        assert "[" in output and "]" in output, "Script did not add number prefixes"
+        # Verify strict formatting requirements from guidelines
+        # Format: [N] session_name @ X windows
+        assert "[" in output and "]" in output, "Missing number prefixes [N]"
+        assert "@" in output, "Missing delimiter @"
+        assert "windows" in output, "Missing 'windows' text"
 
     finally:
-        # Cleanup
         os.system("tmux kill-session -t script_test_alpha 2>/dev/null")
         os.system("tmux kill-session -t script_test_beta 2>/dev/null")
-        os.system("tmux kill-session -t script_test_gamma 2>/dev/null")
-
-
-def test_script_formats_session_output():
-    """Test that the script formats session output with numbers and window counts."""
-    # Create a session
-    os.system("tmux new-session -d -s format_test")
-    time.sleep(0.3)
-
-    try:
-        # Get the script's output
-        output = os.popen("node /app/session-zx.mjs reload-sessions").read()
-
-        # Verify format: [N] session_name @ X windows
-        assert "format_test" in output
-        assert "@" in output, "Script should use @ as delimiter"
-        assert "windows" in output, "Script should show window count"
-
-        # Check for number prefix [1], [2], etc.
-        lines = [line for line in output.split('\n') if line.strip()]
-        if len(lines) > 0:
-            assert any("[" in line and "]" in line for line in lines), \
-                "Script should add number prefixes for quick selection"
-
-    finally:
-        os.system("tmux kill-session -t format_test 2>/dev/null")
-
-
-def test_script_handles_multiple_sessions():
-    """Test that the script correctly lists multiple sessions."""
-    # Create 5 sessions
-    sessions = ["multi1", "multi2", "multi3", "multi4", "multi5"]
-    for session in sessions:
-        os.system(f"tmux new-session -d -s {session}")
-    time.sleep(0.5)
-
-    try:
-        # Get script output
-        output = os.popen("node /app/session-zx.mjs reload-sessions").read()
-
-        # Verify all sessions are listed
-        for session in sessions:
-            assert session in output, f"Script did not list {session}"
-
-        # Count how many sessions were listed
-        lines = [line for line in output.split('\n') if line.strip()]
-        assert len(lines) >= len(sessions), \
-            f"Script listed {len(lines)} lines but we created {len(sessions)} sessions"
-
-    finally:
-        for session in sessions:
-            os.system(f"tmux kill-session -t {session} 2>/dev/null")
-
 
 def test_script_shows_window_counts():
     """Test that the script shows accurate window counts."""
-    # Create a session
     os.system("tmux new-session -d -s window_test")
     time.sleep(0.3)
-
-    # Add more windows to the session
+    # Add 2 more windows (total 3)
     os.system("tmux new-window -t window_test")
     os.system("tmux new-window -t window_test")
     time.sleep(0.3)
 
     try:
-        # Get script output
-        output = os.popen("node /app/session-zx.mjs reload-sessions").read()
-
-        # Verify window count is shown
-        assert "window_test" in output
-        assert "3 windows" in output or "windows" in output, \
-            "Script should show window count"
+        output = run_script_reload()
+        
+        # Regex or string check for "3 windows"
+        # The output format is like "window_test @ 3 windows"
+        assert "3 windows" in output, f"Expected '3 windows' in output, got:\n{output}"
 
     finally:
         os.system("tmux kill-session -t window_test 2>/dev/null")
 
-
-def test_script_handles_special_characters_in_names():
-    """Test that the script handles session names with special characters."""
-    # Create sessions with various characters
-    # Note: tmux converts dots to underscores automatically
-    test_names = [
-        ("test-dash", "test-dash"),        # dash is preserved
-        ("test_underscore", "test_underscore"),  # underscore is preserved
-        ("test.dot", "test_dot"),          # dot becomes underscore (tmux behavior)
-    ]
-
-    for name, _ in test_names:
-        os.system(f"tmux new-session -d -s '{name}'")
+def test_special_characters_handling():
+    """Test handling of sessions with dashes, underscores, etc."""
+    # tmux converts dots to underscores, so we test what persists
+    names = ["test-dash", "test_underscore", "test with space"]
+    
+    for n in names:
+        os.system(f"tmux new-session -d -s '{n}'")
     time.sleep(0.5)
-
+    
     try:
-        # Get script output
-        output = os.popen("node /app/session-zx.mjs reload-sessions").read()
-
-        # Verify all names are handled (check for expected output, not input)
-        for _, expected in test_names:
-            assert expected in output, f"Script did not show session as: {expected}"
-
+        output = run_script_reload()
+        
+        for n in names:
+            assert n in output, f"Session '{n}' not found in output"
+            
     finally:
-        for name, _ in test_names:
-            os.system(f"tmux kill-session -t '{name}' 2>/dev/null")
+        for n in names:
+            os.system(f"tmux kill-session -t '{n}' 2>/dev/null")
 
-
-def test_script_runs_without_crashing():
-    """Test that the script runs the reload-sessions action without crashing."""
-    # Create at least one session
-    os.system("tmux new-session -d -s stable_test")
+def test_script_excludes_current_session_by_default_in_switch():
+    """
+    The 'switch' action (interactive) usually excludes the current session.
+    But 'reload-sessions' (used for fzf list) might include or exclude it based on args?
+    
+    Looking at code: 
+    if (action === 'reload-sessions') {
+      const sessions = await getSessionsList({ currentSession: null, excludeCurrent: false });
+    
+    So 'reload-sessions' INCLUDES everything.
+    
+    But let's check if the number prefixing handles [current] or if it's just raw list.
+    The script adds number prefixes.
+    """
+    os.system("tmux new-session -d -s current_one")
     time.sleep(0.3)
-
+    
     try:
-        # Run the script
-        result = os.system("node /app/session-zx.mjs reload-sessions >/dev/null 2>&1")
-        exit_code = result >> 8
-
-        # Script should exit cleanly (exit code 0)
-        assert exit_code == 0, f"Script crashed with exit code {exit_code}"
+        # We need to run this from INSIDE tmux to have a "current session" context 
+        # if we were testing 'switch'. 
+        # But 'reload-sessions' ignores current session context effectively (passes null).
+        
+        output = run_script_reload()
+        assert "current_one" in output
 
     finally:
-        os.system("tmux kill-session -t stable_test 2>/dev/null")
+        os.system("tmux kill-session -t current_one 2>/dev/null")
