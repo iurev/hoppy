@@ -110,13 +110,14 @@ def test_script_shows_window_counts():
 def test_script_handles_special_characters_in_names():
     """Test that the script handles session names with special characters."""
     # Create sessions with various characters
+    # Note: tmux converts dots to underscores automatically
     test_names = [
-        "test-dash",
-        "test_underscore",
-        "test.dot",
+        ("test-dash", "test-dash"),        # dash is preserved
+        ("test_underscore", "test_underscore"),  # underscore is preserved
+        ("test.dot", "test_dot"),          # dot becomes underscore (tmux behavior)
     ]
 
-    for name in test_names:
+    for name, _ in test_names:
         os.system(f"tmux new-session -d -s '{name}'")
     time.sleep(0.5)
 
@@ -124,12 +125,12 @@ def test_script_handles_special_characters_in_names():
         # Get script output
         output = os.popen("node /app/session-zx.mjs reload-sessions").read()
 
-        # Verify all names are handled
-        for name in test_names:
-            assert name in output, f"Script did not handle session name: {name}"
+        # Verify all names are handled (check for expected output, not input)
+        for _, expected in test_names:
+            assert expected in output, f"Script did not show session as: {expected}"
 
     finally:
-        for name in test_names:
+        for name, _ in test_names:
             os.system(f"tmux kill-session -t '{name}' 2>/dev/null")
 
 
