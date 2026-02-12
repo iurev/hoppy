@@ -123,8 +123,23 @@ class TmuxSession:
         return self
 
     def press_del(self):
-        """Delete key for kill action."""
-        self.send_keys('\x7f')  # DEL/Backspace
+        """Send backspace (0x7f). Named 'del' for legacy reasons — this is actually backspace."""
+        self.send_keys('\x7f')  # Backspace
+        return self
+
+    def press_backspace(self):
+        """Send backspace (0x7f). Same as press_del(), but with a clearer name."""
+        self.send_keys('\x7f')
+        return self
+
+    def press_delete(self):
+        """Send real Delete key (escape sequence). Triggers fzf 'del' event."""
+        self.send_keys('\x1b[3~')
+        return self
+
+    def press_tab(self):
+        """Send Tab key."""
+        self.send_keys('\t')
         return self
 
     def press_escape(self):
@@ -158,3 +173,42 @@ class TmuxSession:
                 return True
             time.sleep(0.2)
         return False
+
+    def get_current_session(self):
+        """Return the session name attached to the first tmux client."""
+        result = os.popen("tmux list-clients -F '#{session_name}'").read().strip()
+        # Return first line (first client)
+        lines = result.split('\n')
+        return lines[0] if lines else ''
+
+    def get_all_sessions(self):
+        """Return list of all tmux session names."""
+        result = os.popen("tmux list-sessions -F '#S'").read().strip()
+        if not result:
+            return []
+        return result.split('\n')
+
+    def wait_for_session_switch(self, target, timeout=5):
+        """Poll until the client is attached to target session. Returns True if switched."""
+        start = time.time()
+        while time.time() - start < timeout:
+            current = self.get_current_session()
+            if current == target:
+                return True
+            time.sleep(0.3)
+        return False
+
+    def wait_for_session_gone(self, name, timeout=5):
+        """Poll until session no longer exists. Returns True if gone."""
+        start = time.time()
+        while time.time() - start < timeout:
+            sessions = self.get_all_sessions()
+            if name not in sessions:
+                return True
+            time.sleep(0.3)
+        return False
+
+    def get_pane_content(self, session_name=None):
+        """Capture pane content for a session. Uses self.session_name if not given."""
+        target = session_name or self.session_name
+        return os.popen(f"tmux capture-pane -t '{target}' -p").read()

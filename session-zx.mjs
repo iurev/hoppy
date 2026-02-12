@@ -23,7 +23,7 @@ const logFilePath = path.join(scriptDir, 'session-zx.log');
 const LOG_MAX_BYTES = 256 * 1024;
 const LOG_TRIM_TARGET = Math.floor(LOG_MAX_BYTES * 0.8);
 const fsp = fs.promises;
-const SESSION_SWITCH_DEBOUNCE_MS = 300;
+const SESSION_SWITCH_DEBOUNCE_MS = parseInt(process.env.SESSION_SWITCH_DEBOUNCE_MS, 10) || 300;
 const sessionDebounceFile = path.join('/tmp', `tmux-session-${getTmpUserId()}.json`);
 
 // Initialize frecency
