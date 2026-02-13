@@ -74,19 +74,11 @@ def test_special_characters_handling():
         for n in names:
             os.system(f"tmux kill-session -t '{n}' 2>/dev/null")
 
-def test_script_excludes_current_session_by_default_in_switch():
-    """
-    The 'switch' action (interactive) usually excludes the current session.
-    But 'reload-sessions' (used for fzf list) might include or exclude it based on args?
-    
-    Looking at code: 
-    if (action === 'reload-sessions') {
-      const sessions = await getSessionsList({ currentSession: null, excludeCurrent: false });
-    
-    So 'reload-sessions' INCLUDES everything.
-    
-    But let's check if the number prefixing handles [current] or if it's just raw list.
-    The script adds number prefixes.
+def test_reload_sessions_includes_all_sessions():
+    """reload-sessions lists ALL sessions (excludeCurrent: false).
+
+    The script passes excludeCurrent: false for reload-sessions,
+    so every session appears in the output including the current one.
     """
     os.system("tmux new-session -d -s current_one")
     time.sleep(0.3)

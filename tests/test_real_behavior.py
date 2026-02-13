@@ -71,34 +71,49 @@ def test_escape_cancels_switch(tmux, create_sessions):
     assert after == "test_session", f"Should stay in test_session, got {after}"
 
 
-def test_switch_arrow_down_then_enter(tmux, create_sessions):
-    """Arrow down in popup, press Enter. Verify switched away."""
+def test_switch_ctrl_n_then_enter(tmux, create_sessions):
+    """Ctrl+N navigates down AND live-previews, then Enter confirms.
+
+    Ctrl+N binding: down + execute-silent(switch-from-line {})
+    So it moves the cursor AND triggers a live preview switch.
+
+    Uses --reverse layout so Ctrl+N (down) moves visually downward:
+    > [1] test_session @ 1 windows   <- cursor starts here
+      [2] arrow_target @ 1 windows
+      [cancel]
+
+    Ctrl+N moves to arrow_target and live-switches there. Enter confirms.
+    No filter — filter resets cursor position, hiding navigation bugs.
+    """
     create_sessions("arrow_target")
 
     before = tmux.get_current_session()
     assert before == "test_session"
 
+    # Set --reverse so Ctrl+N navigates downward visually
+    os.system("tmux set-environment -g FZF_DEFAULT_OPTS '--reverse'")
+    tmux.run_command("export FZF_DEFAULT_OPTS='--reverse'")
+    time.sleep(0.3)
+
     tmux.send_keys("node /app/session-zx.mjs popup-switch")
     tmux.press_enter()
     time.sleep(1.5)
 
-    # fzf highlights bottom match by default. Arrow down several times
-    # to make sure we land on a non-current, non-cancel item.
-    tmux.press_arrow_down()
-    time.sleep(0.2)
-    tmux.press_arrow_down()
-    time.sleep(0.2)
-    tmux.press_arrow_down()
-    time.sleep(0.3)
+    # Ctrl+N = move down + live preview switch (debounce 300ms default)
+    tmux.press_ctrl_n()
+    time.sleep(1.0)  # wait for debounce + switch
 
-    # Type partial filter to ensure arrow_target is the only match
-    tmux.send_keys("arrow")
-    time.sleep(0.5)
+    # Live preview should have already switched us
+    mid = tmux.get_current_session()
+    assert mid == "arrow_target", \
+        f"Live preview should have switched to arrow_target, got {mid}"
+
+    # Enter confirms the selection
     tmux.press_enter()
     time.sleep(1.0)
 
     assert tmux.wait_for_session_switch("arrow_target", timeout=3), \
-        f"Should have switched to arrow_target, got {tmux.get_current_session()}"
+        f"Should stay in arrow_target after Enter, got {tmux.get_current_session()}"
 
 
 # ---------------------------------------------------------------------------
@@ -395,3 +410,199 @@ def test_action_menu_cancel_does_nothing(tmux):
 
     after = tmux.get_current_session()
     assert after == before, f"Session changed from {before} to {after}"
+
+
+# ---------------------------------------------------------------------------
+# Group 9 — Edge cases & missing workflows
+# ---------------------------------------------------------------------------
+
+def test_action_menu_selects_switch_then_switches(tmux, create_sessions):
+    """Full menu flow: no args -> action menu -> pick 'switch' -> pick session."""
+    create_sessions("menu_target")
+
+    tmux.run_command("node /app/session-zx.mjs")
+    time.sleep(1.5)
+
+    # Select "switch" from the action menu
+    tmux.send_keys("switch")
+    time.sleep(0.3)
+    tmux.press_enter()
+    time.sleep(1.5)  # second fzf (session list) appears
+
+    # Pick session
+    tmux.send_keys("menu_target")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    assert tmux.wait_for_session_switch("menu_target", timeout=3), \
+        f"Did not switch to menu_target. Current: {tmux.get_current_session()}"
+
+
+def test_filter_matches_nothing_escape(tmux, create_sessions):
+    """Type gibberish (0 matches) then Escape. Verify stayed in test_session."""
+    create_sessions("some_sess")
+
+    before = tmux.get_current_session()
+    assert before == "test_session"
+
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    tmux.send_keys("zzzzxxx_no_match")
+    time.sleep(0.5)
+    tmux.press_escape()
+    time.sleep(0.5)
+
+    after = tmux.get_current_session()
+    assert after == "test_session", f"Should stay in test_session, got {after}"
+
+
+def test_filter_matches_nothing_enter(tmux, create_sessions):
+    """Type gibberish (0 matches) then Enter. Verify no crash, stayed in session."""
+    create_sessions("some_sess")
+
+    before = tmux.get_current_session()
+    assert before == "test_session"
+
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    tmux.send_keys("zzzzxxx_no_match")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    after = tmux.get_current_session()
+    assert after == "test_session", f"Should stay in test_session, got {after}"
+
+
+def test_switch_only_session_exists(tmux):
+    """Only test_session exists. Pick it from fzf. Verify no crash."""
+    before = tmux.get_current_session()
+    assert before == "test_session"
+
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    # Only test_session + [cancel] in the list. Press Enter on test_session.
+    tmux.send_keys("test_session")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    after = tmux.get_current_session()
+    assert after == "test_session", f"Should stay in test_session, got {after}"
+
+
+def test_switch_session_with_spaces(tmux, create_sessions):
+    """Switch to a session whose name has spaces."""
+    create_sessions("my session")
+
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    tmux.send_keys("my session")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    assert tmux.wait_for_session_switch("my session", timeout=3), \
+        f"Did not switch to 'my session'. Current: {tmux.get_current_session()}"
+
+
+def test_two_consecutive_switches(tmux, create_sessions):
+    """Switch twice in a row: test_session -> first_dest -> second_dest."""
+    create_sessions("first_dest", "second_dest")
+
+    # First switch
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    tmux.send_keys("first_dest")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    assert tmux.wait_for_session_switch("first_dest", timeout=3), \
+        f"First switch failed. Current: {tmux.get_current_session()}"
+
+    time.sleep(0.5)
+
+    # Second switch (from first_dest's shell)
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    tmux.send_keys("second_dest")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    assert tmux.wait_for_session_switch("second_dest", timeout=3), \
+        f"Second switch failed. Current: {tmux.get_current_session()}"
+
+
+def test_rename_other_session(tmux, create_sessions):
+    """Rename a different session (not test_session). Verify old name gone, new exists."""
+    create_sessions("old_name")
+
+    tmux.send_keys("node /app/session-zx.mjs rename")
+    tmux.press_enter()
+    time.sleep(2.0)
+
+    # Write new name to FIFO
+    os.system("echo new_name > /tmp/tmux_fzf_session_name")
+    time.sleep(0.5)
+
+    # fzf appears — select old_name
+    time.sleep(0.5)
+    tmux.send_keys("old_name")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    sessions = tmux.get_all_sessions()
+    assert "new_name" in sessions, f"new_name not found. Sessions: {sessions}"
+    assert "old_name" not in sessions, f"old_name still exists. Sessions: {sessions}"
+    assert "test_session" in sessions, f"test_session gone. Sessions: {sessions}"
+
+
+@pytest.mark.skip(reason=(
+    "Detach runs inside popup which has its own tmux client. "
+    "The pexpect client on /dev/pts/0 stays attached to test_session "
+    "even after the detach action completes, so the 'no clients' check fails."
+))
+def test_detach_current_session(tmux):
+    """Run detach action on current session. Verify session still exists."""
+    before_sessions = tmux.get_all_sessions()
+    assert "test_session" in before_sessions
+
+    tmux.send_keys("node /app/session-zx.mjs detach")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    # Select [current] or test_session
+    tmux.send_keys("test_session")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    # After detach, pexpect client may be disconnected.
+    # Use os.popen directly to check session still exists.
+    result = os.popen("tmux list-sessions -F '#S' 2>/dev/null").read().strip()
+    sessions = result.split('\n') if result else []
+    assert "test_session" in sessions, \
+        f"test_session should still exist after detach. Sessions: {sessions}"
+
+    # Check no clients are attached
+    clients = os.popen(
+        "tmux list-clients -t test_session -F '#{client_name}' 2>/dev/null"
+    ).read().strip()
+    assert clients == "", \
+        f"Expected no clients attached after detach, got: {clients}"
