@@ -5,7 +5,6 @@ tmux popups, fzf, and pexpect together. Keep them in the codebase.
 """
 import os
 import time
-import pytest
 
 
 def test_pexpect_can_reach_fzf_in_popup(tmux, create_sessions):
@@ -25,9 +24,10 @@ def test_pexpect_can_reach_fzf_in_popup(tmux, create_sessions):
     tmux.press_escape()
     time.sleep(0.5)
 
-    # Session should still exist (no crash)
+    # Session should still exist and client should stay in test_session.
     sessions = tmux.get_all_sessions()
     assert "test_session" in sessions, f"test_session missing. Sessions: {sessions}"
+    assert tmux.get_current_session() == "test_session"
 
 
 def test_capture_pane_during_popup(tmux, create_sessions):
@@ -53,10 +53,10 @@ def test_capture_pane_during_popup(tmux, create_sessions):
     # We just log; we expect the shell pane, not fzf content
     print(f"\n--- capture-pane during popup ---\n{content}\n--- end ---")
 
-    # The content should NOT contain fzf indicators (>) from the popup
-    # because capture-pane can't see popup overlays
-    # (This assertion documents the behavior — adjust if tmux changes)
-    assert content is not None, "capture-pane returned None"
+    # capture-pane should show underlying shell command, not popup list content.
+    assert "popup-switch" in content, "Underlying shell command not captured."
+    assert "Select target session" not in content, \
+        "capture-pane unexpectedly includes popup overlay content."
 
 
 def test_session_detection_via_list_clients(tmux, create_sessions):
@@ -89,8 +89,6 @@ def test_popup_escape_reverts_or_not(tmux, create_sessions):
     # Set env in tmux global environment so popup subprocess inherits it
     os.system("tmux set-environment -g SESSION_SWITCH_DEBOUNCE_MS 2000")
     os.system("tmux set-environment -g FZF_DEFAULT_OPTS '--reverse'")
-    tmux.run_command("export SESSION_SWITCH_DEBOUNCE_MS=2000")
-    tmux.run_command("export FZF_DEFAULT_OPTS='--reverse'")
     time.sleep(0.3)
 
     tmux.send_keys("node /app/session-zx.mjs popup-switch")
@@ -111,10 +109,7 @@ def test_popup_escape_reverts_or_not(tmux, create_sessions):
 
     after = tmux.get_current_session()
     print(f"After Escape: client is in '{after}'")
-    print(f"Reverted: {after == 'test_session'}, Stayed: {after == mid}")
-
-    # This test always passes — it just documents the behavior
-    assert after in ("test_session", "preview_target"), f"Unexpected session: {after}"
+    assert after == mid, f"Expected popup close to keep preview target '{mid}', got '{after}'"
 
 
 def test_send_keys_via_pexpect_reaches_fzf(tmux, create_sessions):
@@ -148,7 +143,8 @@ def test_arrow_keys_work_in_fzf(tmux, create_sessions):
     """Prove arrow keys navigate fzf items when running switch directly."""
     create_sessions("arrow_a", "arrow_b")
 
-    tmux.run_command("node /app/session-zx.mjs switch")
+    # Use --reverse so ArrowDown can move from top row to next row.
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' node /app/session-zx.mjs switch")
     time.sleep(1.5)
 
     # Capture initial state
@@ -166,6 +162,7 @@ def test_arrow_keys_work_in_fzf(tmux, create_sessions):
     # Both captures should have content (fzf is running)
     assert len(content_before.strip()) > 0, "No content before arrow"
     assert len(content_after.strip()) > 0, "No content after arrow"
+    assert content_before != content_after, "Arrow key did not change fzf state."
 
     # Cleanup
     tmux.press_escape()

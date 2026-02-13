@@ -6,8 +6,25 @@ Uses switch (direct) only when we need to inspect fzf screen content.
 Each test checks before-state, does the action, checks after-state.
 """
 import os
+import re
 import time
 import pytest
+
+
+def configure_popup_env(*, debounce_ms=None, reverse=False):
+    """Set tmux global env so popup subprocesses inherit test settings."""
+    if debounce_ms is not None:
+        os.system(f"tmux set-environment -g SESSION_SWITCH_DEBOUNCE_MS {debounce_ms}")
+    if reverse:
+        os.system("tmux set-environment -g FZF_DEFAULT_OPTS '--reverse'")
+    time.sleep(0.3)
+
+
+def press_backspace_times(tmux, count):
+    """Press backspace many times to clear active fzf query."""
+    for _ in range(count):
+        tmux.press_backspace()
+        time.sleep(0.08)
 
 
 # ---------------------------------------------------------------------------
@@ -91,9 +108,7 @@ def test_switch_ctrl_n_then_enter(tmux, create_sessions):
     assert before == "test_session"
 
     # Set --reverse so Ctrl+N navigates downward visually
-    os.system("tmux set-environment -g FZF_DEFAULT_OPTS '--reverse'")
-    tmux.run_command("export FZF_DEFAULT_OPTS='--reverse'")
-    time.sleep(0.3)
+    configure_popup_env(reverse=True)
 
     tmux.send_keys("node /app/session-zx.mjs popup-switch")
     tmux.press_enter()
@@ -129,11 +144,7 @@ def test_ctrl_n_previews_session(tmux, create_sessions):
     create_sessions("preview_a", "preview_b")
 
     # Set env in tmux global environment so popup subprocess inherits it
-    os.system("tmux set-environment -g SESSION_SWITCH_DEBOUNCE_MS 2000")
-    os.system("tmux set-environment -g FZF_DEFAULT_OPTS '--reverse'")
-    tmux.run_command("export SESSION_SWITCH_DEBOUNCE_MS=2000")
-    tmux.run_command("export FZF_DEFAULT_OPTS='--reverse'")
-    time.sleep(0.3)
+    configure_popup_env(debounce_ms=2000, reverse=True)
 
     tmux.send_keys("node /app/session-zx.mjs popup-switch")
     tmux.press_enter()
@@ -153,6 +164,57 @@ def test_ctrl_n_previews_session(tmux, create_sessions):
     time.sleep(0.5)
 
 
+def test_ctrl_p_previews_session(tmux, create_sessions):
+    """Ctrl+P previews the previous row after we move down with Ctrl+N."""
+    create_sessions("preview_p_target")
+
+    configure_popup_env(debounce_ms=2000, reverse=True)
+
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    tmux.press_ctrl_n()
+    time.sleep(2.5)
+
+    mid = tmux.get_current_session()
+    assert mid == "preview_p_target", \
+        f"Expected Ctrl+N preview to reach preview_p_target, got {mid}"
+
+    tmux.press_ctrl_p()
+    time.sleep(2.5)
+
+    after = tmux.get_current_session()
+    assert after == "test_session", \
+        f"Expected Ctrl+P preview to return to test_session, got {after}"
+
+    tmux.press_escape()
+    time.sleep(0.5)
+
+
+def test_ctrl_n_then_ctrl_p_bounce(tmux, create_sessions):
+    """Quick Ctrl+N then Ctrl+P keeps only the last debounced preview target."""
+    create_sessions("bounce_target")
+
+    configure_popup_env(debounce_ms=2000, reverse=True)
+
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    tmux.press_ctrl_n()
+    time.sleep(0.1)
+    tmux.press_ctrl_p()
+    time.sleep(2.5)
+
+    after = tmux.get_current_session()
+    assert after == "test_session", \
+        f"Expected final debounced target to be test_session, got {after}"
+
+    tmux.press_escape()
+    time.sleep(0.5)
+
+
 def test_ctrl_n_then_escape_behavior(tmux, create_sessions):
     """After Ctrl+N live preview, pressing Escape closes popup.
 
@@ -165,11 +227,7 @@ def test_ctrl_n_then_escape_behavior(tmux, create_sessions):
     assert before == "test_session"
 
     # Set env in tmux global environment so popup subprocess inherits it
-    os.system("tmux set-environment -g SESSION_SWITCH_DEBOUNCE_MS 2000")
-    os.system("tmux set-environment -g FZF_DEFAULT_OPTS '--reverse'")
-    tmux.run_command("export SESSION_SWITCH_DEBOUNCE_MS=2000")
-    tmux.run_command("export FZF_DEFAULT_OPTS='--reverse'")
-    time.sleep(0.3)
+    configure_popup_env(debounce_ms=2000, reverse=True)
 
     tmux.send_keys("node /app/session-zx.mjs popup-switch")
     tmux.press_enter()
@@ -196,11 +254,7 @@ def test_ctrl_n_debounce_only_switches_once(tmux, create_sessions):
     create_sessions("deb_a", "deb_b", "deb_c")
 
     # Set env in tmux global environment so popup subprocess inherits it
-    os.system("tmux set-environment -g SESSION_SWITCH_DEBOUNCE_MS 2000")
-    os.system("tmux set-environment -g FZF_DEFAULT_OPTS '--reverse'")
-    tmux.run_command("export SESSION_SWITCH_DEBOUNCE_MS=2000")
-    tmux.run_command("export FZF_DEFAULT_OPTS='--reverse'")
-    time.sleep(0.3)
+    configure_popup_env(debounce_ms=2000, reverse=True)
 
     tmux.send_keys("node /app/session-zx.mjs popup-switch")
     tmux.press_enter()
@@ -215,7 +269,8 @@ def test_ctrl_n_debounce_only_switches_once(tmux, create_sessions):
     time.sleep(2.5)  # wait for debounce
 
     after = tmux.get_current_session()
-    # Should be in ONE of the sessions (the last one fzf stopped on), not test_session
+    # We can only observe the final client destination.
+    # If debounce works, rapid Ctrl+N presses coalesce and final state is not test_session.
     assert after != "test_session", \
         f"Expected to be previewed away from test_session, still in {after}"
 
@@ -246,11 +301,60 @@ def test_typing_filters_fzf_list(tmux, create_sessions):
 
     content = tmux.get_output()
     assert "beta" in content, f"beta not visible after filter:\n{content}"
-    # alpha and gamma should be filtered out
-    # (fzf might still show them dimmed, so we check the match count)
+    cleaned = tmux.strip_ansi(content)
+    match_count_is_one = re.search(r"\b1/\d+\b", cleaned) is not None
+    only_beta_visible = "alpha" not in cleaned and "gamma" not in cleaned
+    assert match_count_is_one or only_beta_visible, \
+        f"Expected a narrowed list after typing beta. Output:\n{cleaned}"
 
     tmux.press_escape()
     time.sleep(0.5)
+
+
+def test_arrow_down_then_enter_switches(tmux, create_sessions):
+    """Arrow down and Enter should switch to the next session."""
+    create_sessions("arrow_pick")
+
+    before = tmux.get_current_session()
+    assert before == "test_session"
+
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' node /app/session-zx.mjs switch")
+    time.sleep(1.5)
+
+    tmux.press_arrow_down()
+    time.sleep(0.3)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    assert tmux.wait_for_session_switch("arrow_pick", timeout=3), \
+        f"Arrow + Enter did not switch to arrow_pick. Current: {tmux.get_current_session()}"
+
+
+def test_arrow_up_then_enter_switches(tmux, create_sessions):
+    """Arrow up navigation should change cursor position before Enter switch."""
+    create_sessions("up_a", "up_b", "up_c")
+
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' node /app/session-zx.mjs switch")
+    time.sleep(1.5)
+
+    tmux.press_arrow_down()
+    time.sleep(0.2)
+    tmux.press_arrow_down()
+    time.sleep(0.2)
+    before_up = tmux.get_output()
+
+    tmux.press_arrow_up()
+    time.sleep(0.3)
+    after_up = tmux.get_output()
+
+    assert before_up != after_up, "Arrow up did not change fzf state."
+
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    final_session = tmux.get_current_session()
+    assert final_session in {"up_a", "up_b", "up_c"}, \
+        f"Expected to land in one of up_* sessions, got {final_session}"
 
 
 def test_backspace_corrects_filter(tmux, create_sessions):
@@ -275,6 +379,74 @@ def test_backspace_corrects_filter(tmux, create_sessions):
 
     assert tmux.wait_for_session_switch("banana", timeout=3), \
         f"Did not switch to banana. Current: {tmux.get_current_session()}"
+
+
+def test_clear_filter_with_backspaces(tmux, create_sessions):
+    """Type junk, clear with backspaces, then select a real session."""
+    create_sessions("alpha", "beta")
+
+    tmux.run_command("node /app/session-zx.mjs switch")
+    time.sleep(1.5)
+
+    tmux.send_keys("xxxxx")
+    time.sleep(0.5)
+
+    no_match = tmux.strip_ansi(tmux.get_output())
+    assert re.search(r"\b0/\d+\b", no_match) is not None, \
+        f"Expected 0 matches after junk filter. Output:\n{no_match}"
+
+    press_backspace_times(tmux, 5)
+    time.sleep(0.5)
+
+    cleared = tmux.strip_ansi(tmux.get_output())
+    assert "alpha" in cleared and "beta" in cleared, \
+        f"Expected list to return after clearing filter. Output:\n{cleared}"
+    assert re.search(r"\b0/\d+\b", cleared) is None, \
+        f"Filter still shows zero matches after backspaces. Output:\n{cleared}"
+
+    tmux.send_keys("alpha")
+    time.sleep(0.4)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    assert tmux.wait_for_session_switch("alpha", timeout=3), \
+        f"Expected switch to alpha after clearing filter. Current: {tmux.get_current_session()}"
+
+
+def test_filter_then_arrow_selects_second_match(tmux, create_sessions):
+    """Filter to two matches; arrow down picks the other matching session."""
+    create_sessions("proj_alpha", "proj_beta", "other")
+
+    # First run: plain Enter on filtered list (baseline first match).
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' node /app/session-zx.mjs switch")
+    time.sleep(1.5)
+    tmux.send_keys("proj_")
+    time.sleep(0.5)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    first_pick = tmux.get_current_session()
+    assert first_pick in {"proj_alpha", "proj_beta"}, \
+        f"Unexpected first filtered pick: {first_pick}"
+
+    os.system("tmux switch-client -t test_session")
+    time.sleep(0.5)
+
+    # Second run: same filter, then arrow down before Enter.
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' node /app/session-zx.mjs switch")
+    time.sleep(1.5)
+    tmux.send_keys("proj_")
+    time.sleep(0.5)
+    tmux.press_arrow_down()
+    time.sleep(0.3)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    second_pick = tmux.get_current_session()
+    assert second_pick in {"proj_alpha", "proj_beta"}, \
+        f"Unexpected second filtered pick: {second_pick}"
+    assert second_pick != first_pick, \
+        f"Arrow down did not change selection. Both picks: {second_pick}"
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +477,33 @@ def test_del_key_kills_session(tmux, create_sessions):
 
     assert tmux.wait_for_session_gone("victim", timeout=3), \
         f"victim still exists. Sessions: {tmux.get_all_sessions()}"
+
+
+def test_del_then_switch_another(tmux, create_sessions):
+    """Delete one session in picker, then switch to another without reopening."""
+    create_sessions("victim", "survivor")
+
+    tmux.send_keys("node /app/session-zx.mjs popup-switch")
+    tmux.press_enter()
+    time.sleep(1.5)
+
+    tmux.send_keys("victim")
+    time.sleep(0.4)
+    tmux.press_delete()
+    time.sleep(1.5)
+
+    press_backspace_times(tmux, len("victim"))
+    time.sleep(0.3)
+
+    tmux.send_keys("survivor")
+    time.sleep(0.4)
+    tmux.press_enter()
+    time.sleep(1.0)
+
+    assert tmux.wait_for_session_gone("victim", timeout=3), \
+        f"victim still exists after Delete flow. Sessions: {tmux.get_all_sessions()}"
+    assert tmux.wait_for_session_switch("survivor", timeout=3), \
+        f"Did not switch to survivor after delete+reload flow. Current: {tmux.get_current_session()}"
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +574,37 @@ def test_kill_action_removes_session(tmux, create_sessions):
 
     sessions = tmux.get_all_sessions()
     assert "keep_me" in sessions, f"keep_me was also killed. Sessions: {sessions}"
+
+
+def test_kill_multiple_sessions_with_tab(tmux, create_sessions):
+    """Mark two sessions with Tab in kill action and remove both."""
+    create_sessions("kill_a", "kill_b", "keep_c")
+
+    tmux.run_command("TMUX_FZF_OPTIONS='--multi' node /app/session-zx.mjs kill")
+    time.sleep(1.5)
+
+    tmux.send_keys("kill_a")
+    time.sleep(0.4)
+    tmux.press_tab()
+    time.sleep(0.2)
+
+    press_backspace_times(tmux, len("kill_a"))
+    time.sleep(0.2)
+
+    tmux.send_keys("kill_b")
+    time.sleep(0.4)
+    tmux.press_tab()
+    time.sleep(0.2)
+
+    tmux.press_enter()
+    time.sleep(1.2)
+
+    assert tmux.wait_for_session_gone("kill_a", timeout=3), \
+        f"kill_a still exists after multi-select kill. Sessions: {tmux.get_all_sessions()}"
+    assert tmux.wait_for_session_gone("kill_b", timeout=3), \
+        f"kill_b still exists after multi-select kill. Sessions: {tmux.get_all_sessions()}"
+    sessions = tmux.get_all_sessions()
+    assert "keep_c" in sessions, f"keep_c was removed unexpectedly. Sessions: {sessions}"
 
 
 # ---------------------------------------------------------------------------
