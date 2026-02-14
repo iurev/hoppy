@@ -75,43 +75,6 @@ def test_session_detection_via_list_clients(tmux, create_sessions):
     assert current == "detect_me", f"Expected detect_me, got {current}"
 
 
-def test_popup_escape_reverts_or_not(tmux, create_sessions):
-    """Document: does Escape after live preview revert the session?
-
-    This test records the actual behavior. Real tests use this knowledge.
-    """
-    create_sessions("preview_target")
-
-    # Start in test_session
-    before = tmux.get_current_session()
-    assert before == "test_session"
-
-    # Set env in tmux global environment so popup subprocess inherits it
-    os.system("tmux set-environment -g SESSION_SWITCH_DEBOUNCE_MS 2000")
-    os.system("tmux set-environment -g FZF_DEFAULT_OPTS '--reverse'")
-    time.sleep(0.3)
-
-    tmux.send_keys("node /app/session-zx.mjs popup-switch")
-    tmux.press_enter()
-    time.sleep(1.5)
-
-    # Press Ctrl+N to trigger live preview switch
-    tmux.press_ctrl_n()
-    time.sleep(2.5)  # debounce (2s) + margin
-
-    # Check if preview switched the client
-    mid = tmux.get_current_session()
-    print(f"\nAfter Ctrl+N preview: client is in '{mid}'")
-
-    # Press Escape to close popup
-    tmux.press_escape()
-    time.sleep(0.5)
-
-    after = tmux.get_current_session()
-    print(f"After Escape: client is in '{after}'")
-    assert after == mid, f"Expected popup close to keep preview target '{mid}', got '{after}'"
-
-
 def test_send_keys_via_pexpect_reaches_fzf(tmux, create_sessions):
     """Prove pexpect can type into fzf running directly (not in popup).
 

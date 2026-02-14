@@ -1,8 +1,8 @@
-"""Helper class for interacting with tmux sessions in tests."""
-import time
-import pexpect
-import re
 import os
+import re
+import time
+
+import pexpect
 
 
 class TmuxSession:
@@ -37,6 +37,12 @@ class TmuxSession:
         time.sleep(0.2)
         return self
 
+    def run_popup_switch(self, action="popup-switch", wait=1.5):
+        """Run popup action and wait for fzf to render."""
+        self.run_command(f"node /app/session-zx.mjs {action}")
+        time.sleep(wait)
+        return self
+
     def press(self, key):
         """Send single keypress."""
         if not self.process:
@@ -53,6 +59,15 @@ class TmuxSession:
 
         self.process.send(keys)
         time.sleep(0.2)
+        return self
+
+    def type_and_accept(self, query, type_wait=0.5, accept_wait=1.0):
+        """Type query text and press Enter."""
+        if query:
+            self.send_keys(query)
+            time.sleep(type_wait)
+        self.press_enter()
+        time.sleep(accept_wait)
         return self
 
     def expect(self, pattern, timeout=None):
@@ -212,3 +227,41 @@ class TmuxSession:
         """Capture pane content for a session. Uses self.session_name if not given."""
         target = session_name or self.session_name
         return os.popen(f"tmux capture-pane -t '{target}' -p").read()
+
+    def clear_query_backspaces(self, count, delay=0.08):
+        """Press backspace many times to clear an fzf query."""
+        for _ in range(count):
+            self.press_backspace()
+            time.sleep(delay)
+        return self
+
+    def assert_current_session(self, expected_name):
+        """Assert current tmux client session with a clear failure message."""
+        current = self.get_current_session()
+        assert current == expected_name, (
+            f"Expected current session '{expected_name}', got '{current}'"
+        )
+        return current
+
+    def assert_session_exists(self, session_name):
+        """Assert that a session exists."""
+        sessions = self.get_all_sessions()
+        assert session_name in sessions, (
+            f"Expected session '{session_name}' to exist. Sessions: {sessions}"
+        )
+        return sessions
+
+    def assert_session_missing(self, session_name):
+        """Assert that a session does not exist."""
+        sessions = self.get_all_sessions()
+        assert session_name not in sessions, (
+            f"Expected session '{session_name}' to be missing. Sessions: {sessions}"
+        )
+        return sessions
+
+    def snapshot_state(self):
+        """Capture current high-level tmux state for diagnostics."""
+        return {
+            "current_session": self.get_current_session(),
+            "sessions": self.get_all_sessions(),
+        }
