@@ -14,6 +14,22 @@ def parse_lines(text: str | None) -> list[str]:
     return [line.strip() for line in text.split("\n") if line.strip()]
 
 
+def parse_env_output(raw: str) -> dict[str, str]:
+    """Parse ``env`` command output into a key/value mapping."""
+    parsed: dict[str, str] = {}
+    for line in raw.split("\n"):
+        if not line:
+            continue
+
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+
+        parsed[key] = value
+
+    return parsed
+
+
 def ensure_trailing_newline(text: str) -> str:
     """Return text with exactly one trailing newline boundary."""
     if text.endswith("\n"):

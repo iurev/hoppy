@@ -3,6 +3,7 @@ import pytest
 from session_zx.domain.parsing import (
     ensure_trailing_newline,
     extract_session_name,
+    parse_env_output,
     parse_targets,
     parse_lines,
 )
@@ -53,3 +54,27 @@ def test_parse_targets_replaces_current_marker_and_extracts_names() -> None:
 
 def test_parse_targets_filters_empty_targets_after_current_replacement() -> None:
     assert parse_targets("[current]", "") == []
+
+
+def test_parse_env_output_parses_valid_lines_and_skips_invalid_rows() -> None:
+    raw = "ALPHA=1\nNO_SEPARATOR\n\nBETA=2"
+
+    assert parse_env_output(raw) == {"ALPHA": "1", "BETA": "2"}
+
+
+def test_parse_env_output_preserves_value_content_after_first_equals() -> None:
+    raw = "COMPLEX=left=right=tail"
+
+    assert parse_env_output(raw) == {"COMPLEX": "left=right=tail"}
+
+
+def test_parse_env_output_keeps_last_value_for_duplicate_keys() -> None:
+    raw = "KEY=first\nKEY=second"
+
+    assert parse_env_output(raw) == {"KEY": "second"}
+
+
+def test_parse_env_output_supports_empty_key_and_empty_value() -> None:
+    raw = "=novaluekey\nEMPTY="
+
+    assert parse_env_output(raw) == {"": "novaluekey", "EMPTY": ""}
