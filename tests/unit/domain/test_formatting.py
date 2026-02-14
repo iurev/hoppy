@@ -2,6 +2,7 @@ from session_zx.domain.formatting import (
     add_number_prefixes,
     normalize_session_row,
     normalize_session_rows,
+    strip_number_prefix,
 )
 
 
@@ -62,3 +63,15 @@ def test_add_number_prefixes_respects_custom_limit() -> None:
     rows = ["alpha", "beta", "gamma"]
 
     assert add_number_prefixes(rows, limit=0) == ["alpha", "beta", "gamma"]
+
+
+def test_strip_number_prefix_removes_numeric_prefix() -> None:
+    assert strip_number_prefix("[3] alpha @ 2 windows") == "alpha @ 2 windows"
+
+
+def test_strip_number_prefix_keeps_non_numeric_special_prefix() -> None:
+    assert strip_number_prefix("[current] alpha @ 2 windows") == "[current] alpha @ 2 windows"
+
+
+def test_strip_number_prefix_keeps_malformed_numeric_prefix() -> None:
+    assert strip_number_prefix("[3]alpha @ 2 windows") == "[3]alpha @ 2 windows"

@@ -1,5 +1,10 @@
 """Formatting helpers."""
 
+import re
+
+
+_NUMBER_PREFIX_PATTERN = re.compile(r"^\[\d+\] ")
+
 
 def normalize_session_row(row: str) -> str:
     """Normalize spacing around tmux session row delimiter."""
@@ -33,3 +38,8 @@ def add_number_prefixes(items: list[str], limit: int = 9) -> list[str]:
         numbered_items.append(item)
 
     return numbered_items
+
+
+def strip_number_prefix(row: str) -> str:
+    """Remove a leading numeric fzf prefix such as ``[1] ``."""
+    return _NUMBER_PREFIX_PATTERN.sub("", row, count=1)
