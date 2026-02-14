@@ -22,3 +22,12 @@ def normalize_debounce_state(raw_state: dict[str, Any] | None) -> dict[str, Any]
         "lastTarget": state.get("lastTarget") if isinstance(state.get("lastTarget"), str) else None,
         "token": state.get("token") if isinstance(state.get("token"), str) else None,
     }
+
+
+def should_execute_delayed_switch(token: str, state: dict[str, Any] | None) -> bool:
+    """Return whether delayed switch should execute for the given token/state."""
+    if not token:
+        return False
+    normalized = normalize_debounce_state(state)
+    last_target = (normalized["lastTarget"] or "").strip()
+    return bool(last_target) and normalized["token"] == token

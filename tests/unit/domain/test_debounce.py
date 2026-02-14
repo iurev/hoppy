@@ -1,4 +1,8 @@
-from session_zx.domain.debounce import make_debounce_token, normalize_debounce_state
+from session_zx.domain.debounce import (
+    make_debounce_token,
+    normalize_debounce_state,
+    should_execute_delayed_switch,
+)
 
 
 def test_make_debounce_token_formats_all_parts_in_order() -> None:
@@ -45,3 +49,39 @@ def test_normalize_debounce_state_resets_non_finite_numbers() -> None:
         "lastTarget": None,
         "token": None,
     }
+
+
+def test_should_execute_delayed_switch_returns_false_for_empty_token() -> None:
+    assert (
+        should_execute_delayed_switch(
+            "", {"lastWrite": 100, "lastTarget": "dev", "token": "100-1-abc"}
+        )
+        is False
+    )
+
+
+def test_should_execute_delayed_switch_returns_false_for_token_mismatch() -> None:
+    assert (
+        should_execute_delayed_switch(
+            "100-1-def", {"lastWrite": 100, "lastTarget": "dev", "token": "100-1-abc"}
+        )
+        is False
+    )
+
+
+def test_should_execute_delayed_switch_returns_false_for_blank_target() -> None:
+    assert (
+        should_execute_delayed_switch(
+            "100-1-abc", {"lastWrite": 100, "lastTarget": "   ", "token": "100-1-abc"}
+        )
+        is False
+    )
+
+
+def test_should_execute_delayed_switch_returns_true_for_matching_token_and_target() -> None:
+    assert (
+        should_execute_delayed_switch(
+            "100-1-abc", {"lastWrite": 100, "lastTarget": " dev ", "token": "100-1-abc"}
+        )
+        is True
+    )

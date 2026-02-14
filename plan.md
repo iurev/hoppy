@@ -22,6 +22,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `sort_rows_by_frecency` implemented in `session_zx/domain/frecency.py` with unit tests in `tests/unit/domain/test_frecency.py` (2026-02-14).
 - [x] `make_debounce_token` implemented in `session_zx/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
 - [x] `normalize_debounce_state` implemented in `session_zx/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
+- [x] `should_execute_delayed_switch` implemented in `session_zx/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
 
 ## 1. Scope and non-goals for this phase
 
