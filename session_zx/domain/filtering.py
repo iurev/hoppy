@@ -14,3 +14,8 @@ def dedupe_preserve_order(items: list[str]) -> list[str]:
         deduped_items.append(item)
 
     return deduped_items
+
+
+def normalize_worktree_path(path: str) -> str:
+    """Normalize a git worktree path by trimming trailing slashes."""
+    return path.rstrip("/")
