@@ -13,6 +13,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `parse_targets` implemented in `session_zx/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
 - [x] `dedupe_preserve_order` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
 - [x] `normalize_worktree_path` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
+- [x] `is_path_in_worktree` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
 
 ## 1. Scope and non-goals for this phase
 
