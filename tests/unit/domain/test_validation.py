@@ -1,6 +1,10 @@
 import pytest
 
-from session_zx.domain.validation import validate_action, validate_session_name
+from session_zx.domain.validation import (
+    validate_action,
+    validate_fzf_options,
+    validate_session_name,
+)
 
 
 @pytest.mark.parametrize(
@@ -84,3 +88,33 @@ def test_validate_session_name_rejects_forbidden_content(
 ) -> None:
     with pytest.raises(ValueError, match=error_message):
         validate_session_name(session_name)
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        "",
+        "--ansi --layout=reverse",
+        "--bind 'ctrl-n:down+accept'",
+    ],
+)
+def test_validate_fzf_options_accepts_valid_strings(options: str) -> None:
+    validate_fzf_options(options, "FZF_DEFAULT_OPTS")
+
+
+def test_validate_fzf_options_rejects_non_string_value() -> None:
+    with pytest.raises(ValueError, match="TMUX_FZF_RUN must be a string, got int"):
+        validate_fzf_options(123, "TMUX_FZF_RUN")  # type: ignore[arg-type]
+
+
+def test_validate_fzf_options_rejects_too_long_value() -> None:
+    too_long = "x" * 10001
+    with pytest.raises(
+        ValueError, match=r"Built FZF_DEFAULT_OPTS exceeds max length of 10000 characters"
+    ):
+        validate_fzf_options(too_long, "Built FZF_DEFAULT_OPTS")
+
+
+def test_validate_fzf_options_rejects_null_bytes() -> None:
+    with pytest.raises(ValueError, match="TMUX_FZF_OPTIONS cannot contain null bytes"):
+        validate_fzf_options("safe\0unsafe", "TMUX_FZF_OPTIONS")

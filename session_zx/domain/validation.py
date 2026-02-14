@@ -62,3 +62,15 @@ def validate_session_name(session_name: str) -> None:
         raise ValueError(
             "Session name can only contain letters, numbers, underscore, hyphen, and spaces"
         )
+
+
+def validate_fzf_options(value: str, label: str) -> None:
+    """Validate fzf options strings."""
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string, got {type(value).__name__}")
+
+    if len(value) > 10000:
+        raise ValueError(f"{label} exceeds max length of 10000 characters")
+
+    if "\0" in value:
+        raise ValueError(f"{label} cannot contain null bytes")

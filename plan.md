@@ -25,6 +25,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `should_execute_delayed_switch` implemented in `session_zx/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
 - [x] `validate_action` implemented in `session_zx/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
 - [x] `validate_session_name` implemented in `session_zx/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
+- [x] `validate_fzf_options` implemented in `session_zx/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
 
 ## 1. Scope and non-goals for this phase
 
