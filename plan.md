@@ -7,6 +7,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `ensure_trailing_newline` implemented in `session_zx/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
 - [x] `normalize_session_row` implemented in `session_zx/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
 - [x] `normalize_session_rows` implemented in `session_zx/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
+- [x] `add_number_prefixes` implemented in `session_zx/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
 
 ## 1. Scope and non-goals for this phase
 
