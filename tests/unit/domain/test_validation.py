@@ -3,6 +3,7 @@ import pytest
 from session_zx.domain.validation import (
     validate_action,
     validate_fzf_options,
+    validate_header,
     validate_session_name,
 )
 
@@ -118,3 +119,23 @@ def test_validate_fzf_options_rejects_too_long_value() -> None:
 def test_validate_fzf_options_rejects_null_bytes() -> None:
     with pytest.raises(ValueError, match="TMUX_FZF_OPTIONS cannot contain null bytes"):
         validate_fzf_options("safe\0unsafe", "TMUX_FZF_OPTIONS")
+
+
+@pytest.mark.parametrize("header", [None, "", "Select target session."])
+def test_validate_header_accepts_none_and_strings(header: str | None) -> None:
+    validate_header(header)
+
+
+def test_validate_header_rejects_non_string_value() -> None:
+    with pytest.raises(ValueError, match="Header must be a string, got int"):
+        validate_header(123)  # type: ignore[arg-type]
+
+
+def test_validate_header_rejects_too_long_value() -> None:
+    with pytest.raises(ValueError, match="Header exceeds max length of 500 characters"):
+        validate_header("x" * 501)
+
+
+def test_validate_header_rejects_newlines() -> None:
+    with pytest.raises(ValueError, match="Header cannot contain newlines"):
+        validate_header("line1\nline2")

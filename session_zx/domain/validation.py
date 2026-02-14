@@ -74,3 +74,18 @@ def validate_fzf_options(value: str, label: str) -> None:
 
     if "\0" in value:
         raise ValueError(f"{label} cannot contain null bytes")
+
+
+def validate_header(header: str | None) -> None:
+    """Validate an optional fzf header string."""
+    if header is None:
+        return
+
+    if not isinstance(header, str):
+        raise ValueError(f"Header must be a string, got {type(header).__name__}")
+
+    if len(header) > 500:
+        raise ValueError("Header exceeds max length of 500 characters")
+
+    if "\n" in header:
+        raise ValueError("Header cannot contain newlines")
