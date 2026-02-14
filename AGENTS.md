@@ -1,13 +1,6 @@
 # Local Codex Guardrails
 
-In this repository (`/home/yu/my/hoppy`), Codex must execute commands using only:
-
-- `docker`
-- `docker-compose`
-
-Direct host commands are not allowed for project tasks in this folder.
-
-Codex must not execute:
+In this repository (`/home/yu/my/hoppy`), Codex must not execute:
 
 - `uv`
 - `python`
