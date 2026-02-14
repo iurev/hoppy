@@ -2,6 +2,7 @@ import pytest
 
 from session_zx.domain.filtering import (
     dedupe_preserve_order,
+    filter_capital_sessions,
     filter_sessions_by_worktrees,
     is_path_in_worktree,
     normalize_worktree_path,
@@ -73,3 +74,31 @@ def test_filter_sessions_by_worktrees_excludes_sessions_without_pane_paths() -> 
     pane_paths = {"alpha": set()}
 
     assert filter_sessions_by_worktrees(rows, worktrees, pane_paths) == []
+
+
+def test_filter_capital_sessions_returns_empty_list_for_empty_rows() -> None:
+    assert filter_capital_sessions([]) == []
+
+
+def test_filter_capital_sessions_keeps_only_matching_names() -> None:
+    rows = [
+        "ABC @ 1 windows",
+        "ALPHA_2-OK @ 1 windows",
+        "UPPER CASE @ 1 windows",
+        "alpha @ 1 windows",
+        "MiXeD @ 1 windows",
+        "12345 @ 1 windows",
+        "WITH.DOT @ 1 windows",
+    ]
+
+    assert filter_capital_sessions(rows) == [
+        "ABC @ 1 windows",
+        "ALPHA_2-OK @ 1 windows",
+        "UPPER CASE @ 1 windows",
+    ]
+
+
+def test_filter_capital_sessions_uses_extracted_name_from_prefixed_rows() -> None:
+    rows = ["[1] MAIN @ 2 windows", "[2] dev @ 3 windows"]
+
+    assert filter_capital_sessions(rows) == ["[1] MAIN @ 2 windows"]

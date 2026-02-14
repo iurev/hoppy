@@ -1,6 +1,11 @@
 """Filtering helpers."""
 
+import re
+
 from session_zx.domain.parsing import extract_session_name
+
+_CAPITAL_SESSION_PATTERN = re.compile(r"^[A-Z0-9_\-\s]+$")
+_HAS_UPPERCASE_LETTER_PATTERN = re.compile(r"[A-Z]")
 
 
 def dedupe_preserve_order(items: list[str]) -> list[str]:
@@ -44,4 +49,14 @@ def filter_sessions_by_worktrees(
             for pane_path in pane_paths.get(extract_session_name(row), set())
             for worktree_path in normalized_worktrees
         )
+    ]
+
+
+def filter_capital_sessions(rows: list[str]) -> list[str]:
+    """Return only rows whose session names are all-capital compatible."""
+    return [
+        row
+        for row in rows
+        if _CAPITAL_SESSION_PATTERN.fullmatch(extract_session_name(row))
+        and _HAS_UPPERCASE_LETTER_PATTERN.search(extract_session_name(row))
     ]
