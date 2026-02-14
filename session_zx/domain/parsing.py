@@ -1,5 +1,10 @@
 """Parsing utilities."""
 
+import re
+
+
+_NUMBER_PREFIX_PATTERN = re.compile(r"^\[\d+\] ")
+
 
 def parse_lines(text: str | None) -> list[str]:
     """Split text into trimmed non-empty lines."""
@@ -15,3 +20,13 @@ def ensure_trailing_newline(text: str) -> str:
         return text
 
     return f"{text}\n"
+
+
+def extract_session_name(row: str) -> str:
+    """Extract the session name from a tmux/fzf row."""
+    cleaned = _NUMBER_PREFIX_PATTERN.sub("", row, count=1)
+    name, separator, _ = cleaned.partition(" @ ")
+    if not separator:
+        return cleaned
+
+    return name
