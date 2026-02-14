@@ -3,6 +3,7 @@ import pytest
 from session_zx.domain.parsing import (
     ensure_trailing_newline,
     extract_session_name,
+    parse_targets,
     parse_lines,
 )
 
@@ -32,3 +33,23 @@ def test_extract_session_name_returns_prefixless_name_with_delimiter() -> None:
 
 def test_extract_session_name_returns_input_when_delimiter_missing() -> None:
     assert extract_session_name("plain-session") == "plain-session"
+
+
+def test_parse_targets_returns_empty_list_for_empty_selection() -> None:
+    assert parse_targets("", "current") == []
+
+
+def test_parse_targets_returns_empty_list_when_cancel_present() -> None:
+    selection = "alpha @ 2 windows\n[cancel]"
+
+    assert parse_targets(selection, "current") == []
+
+
+def test_parse_targets_replaces_current_marker_and_extracts_names() -> None:
+    selection = "[current]\n[2] alpha @ 3 windows\nplain-session"
+
+    assert parse_targets(selection, "base") == ["base", "alpha", "plain-session"]
+
+
+def test_parse_targets_filters_empty_targets_after_current_replacement() -> None:
+    assert parse_targets("[current]", "") == []

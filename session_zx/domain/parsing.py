@@ -30,3 +30,19 @@ def extract_session_name(row: str) -> str:
         return cleaned
 
     return name
+
+
+def parse_targets(selection: str | None, current_session: str) -> list[str]:
+    """Parse selected lines into session targets."""
+    lines = parse_lines(selection)
+    if not lines or "[cancel]" in lines:
+        return []
+
+    return [
+        target
+        for target in (
+            extract_session_name(line.replace("[current]", f"{current_session} @ ", 1))
+            for line in lines
+        )
+        if target
+    ]

@@ -10,6 +10,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `add_number_prefixes` implemented in `session_zx/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
 - [x] `strip_number_prefix` implemented in `session_zx/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
 - [x] `extract_session_name` implemented in `session_zx/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
+- [x] `parse_targets` implemented in `session_zx/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
 
 ## 1. Scope and non-goals for this phase
 
