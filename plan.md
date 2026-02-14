@@ -16,6 +16,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `is_path_in_worktree` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
 - [x] `filter_sessions_by_worktrees` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
 - [x] `filter_capital_sessions` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
+- [x] `bucket_frecency_weight` implemented in `session_zx/domain/frecency.py` with unit tests in `tests/unit/domain/test_frecency.py` (2026-02-14).
 
 ## 1. Scope and non-goals for this phase
 
