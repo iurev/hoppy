@@ -89,3 +89,25 @@ def validate_header(header: str | None) -> None:
 
     if "\n" in header:
         raise ValueError("Header cannot contain newlines")
+
+
+def validate_items(items: list[str], label: str) -> None:
+    """Validate an items list for fzf-compatible selection input."""
+    if not isinstance(items, list):
+        raise ValueError(f"{label} must be an array, got {type(items).__name__}")
+
+    if not items:
+        raise ValueError(f"{label} cannot be empty")
+
+    if len(items) > 10000:
+        raise ValueError(f"{label} has too many items: {len(items)} (max 10000)")
+
+    for index, item in enumerate(items):
+        if not isinstance(item, str):
+            raise ValueError(
+                f"{label}[{index}] must be a string, got {type(item).__name__}"
+            )
+        if len(item) > 1000:
+            raise ValueError(
+                f"{label}[{index}] exceeds max length of 1000 characters"
+            )

@@ -4,6 +4,7 @@ from session_zx.domain.validation import (
     validate_action,
     validate_fzf_options,
     validate_header,
+    validate_items,
     validate_session_name,
 )
 
@@ -139,3 +140,39 @@ def test_validate_header_rejects_too_long_value() -> None:
 def test_validate_header_rejects_newlines() -> None:
     with pytest.raises(ValueError, match="Header cannot contain newlines"):
         validate_header("line1\nline2")
+
+
+def test_validate_items_accepts_valid_item_list() -> None:
+    validate_items(["[1] one", "two", "[current]"], "fzf items")
+
+
+def test_validate_items_rejects_non_list_value() -> None:
+    with pytest.raises(ValueError, match="fzf items must be an array, got str"):
+        validate_items("not-a-list", "fzf items")  # type: ignore[arg-type]
+
+
+def test_validate_items_rejects_empty_list() -> None:
+    with pytest.raises(ValueError, match="fzf items cannot be empty"):
+        validate_items([], "fzf items")
+
+
+def test_validate_items_rejects_excessive_item_count() -> None:
+    with pytest.raises(
+        ValueError, match=r"fzf items has too many items: 10001 \(max 10000\)"
+    ):
+        validate_items(["x"] * 10001, "fzf items")
+
+
+def test_validate_items_rejects_non_string_item() -> None:
+    with pytest.raises(
+        ValueError, match=r"fzf items\[1\] must be a string, got int"
+    ):
+        validate_items(["ok", 2], "fzf items")  # type: ignore[list-item]
+
+
+def test_validate_items_rejects_overlong_item() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"fzf items\[0\] exceeds max length of 1000 characters",
+    ):
+        validate_items(["x" * 1001], "fzf items")
