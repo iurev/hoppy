@@ -272,6 +272,287 @@ def test_run_rename_requires_expected_callable_dependencies(attr_name: str) -> N
         run_rename(_context(action="rename", deps=deps))
 
 
+def test_run_kill_selects_and_kills_multiple_targets() -> None:
+    captured: dict[str, object] = {}
+    killed: list[str] = []
+
+    def selector(items: list[str], header: str, include_preview: bool) -> str:
+        captured["items"] = list(items)
+        captured["header"] = header
+        captured["include_preview"] = include_preview
+        return "[1] beta @ 1 windows\n[2] alpha @ 2 windows"
+
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["alpha @ 2 windows", "beta @ 1 windows"],
+        get_current_session=lambda: "alpha",
+        kill_session_selector=selector,
+        kill_session=lambda target: killed.append(target) or None,
+    )
+
+    result = run_kill(_context(action="kill", deps=deps))
+
+    assert result == EXIT_SUCCESS
+    # Targets are killed in reverse order to avoid index shifts if we had any,
+    # and to ensure deterministic behavior.
+    assert sorted(killed) == ["alpha", "beta"]
+    assert captured == {
+        "items": ["[1] alpha @ 2 windows", "[2] beta @ 1 windows", CANCEL_ITEM],
+        "header": KILL_HEADER,
+        "include_preview": True,
+    }
+
+
+def test_run_kill_returns_success_when_no_targets_selected() -> None:
+    killed: list[str] = []
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["alpha @ 2 windows"],
+        get_current_session=lambda: "alpha",
+        kill_session_selector=lambda _items, _header, _include_preview: None,
+        kill_session=lambda target: killed.append(target) or None,
+    )
+
+    result = run_kill(_context(action="kill", deps=deps))
+
+    assert result == EXIT_SUCCESS
+    assert killed == []
+
+
+def test_run_kill_returns_error_for_invalid_target_name() -> None:
+    killed: list[str] = []
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["bad:name @ 1 windows"],
+        get_current_session=lambda: "alpha",
+        kill_session_selector=lambda _items, _header, _include_preview: (
+            "[1] bad:name @ 1 windows"
+        ),
+        kill_session=lambda target: killed.append(target) or None,
+    )
+
+    result = run_kill(_context(action="kill", deps=deps))
+
+    assert result == EXIT_ERROR
+    assert killed == []
+
+
+def test_run_kill_stops_and_returns_error_if_mutation_fails() -> None:
+    killed: list[str] = []
+
+    def fail_on_beta(target: str) -> bool:
+        if target == "beta":
+            return False
+        killed.append(target)
+        return True
+
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["alpha @ 2 windows", "beta @ 1 windows"],
+        get_current_session=lambda: "gamma",
+        kill_session_selector=lambda _items, _header, _include_preview: (
+            "[1] alpha @ 2 windows\n[2] beta @ 1 windows"
+        ),
+        kill_session=fail_on_beta,
+    )
+
+    result = run_kill(_context(action="kill", deps=deps))
+
+    assert result == EXIT_ERROR
+    # sorted(targets, reverse=True) -> ["beta", "alpha"]
+    # It fails on "beta" first.
+    assert killed == []
+
+
+@pytest.mark.parametrize(
+    "attr_name",
+    (
+        "list_session_rows",
+        "get_current_session",
+        "kill_session_selector",
+        "kill_session",
+    ),
+)
+def test_run_kill_requires_expected_callable_dependencies(attr_name: str) -> None:
+    deps = SimpleNamespace(
+        list_session_rows=lambda: [],
+        get_current_session=lambda: "",
+        kill_session_selector=lambda _items, _header, _include_preview: "",
+        kill_session=lambda _target: None,
+    )
+    setattr(deps, attr_name, None)
+
+    with pytest.raises(
+        TypeError, match=f"Context deps must expose a callable {attr_name}"
+    ):
+        run_kill(_context(action="kill", deps=deps))
+
+
+def test_run_detach_selects_and_detaches_attached_sessions() -> None:
+    captured: dict[str, object] = {}
+    detached: list[str] = []
+
+    def selector(items: list[str], header: str, include_preview: bool) -> str:
+        captured["items"] = list(items)
+        captured["header"] = header
+        captured["include_preview"] = include_preview
+        return "[current]"
+
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["alpha @ 2 windows", "beta @ 1 windows"],
+        get_current_session=lambda: "alpha",
+        get_attached_session_names=lambda: ["alpha"],
+        detach_session_selector=selector,
+        detach_session=lambda target: detached.append(target) or None,
+    )
+
+    result = run_detach(_context(action="detach", deps=deps))
+
+    assert result == EXIT_SUCCESS
+    assert detached == ["alpha"]
+    assert captured == {
+        "items": [CURRENT_ITEM, "alpha @ 2 windows", CANCEL_ITEM],
+        "header": DETACH_HEADER,
+        "include_preview": True,
+    }
+
+
+def test_run_detach_returns_success_when_no_targets_selected() -> None:
+    detached: list[str] = []
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["alpha @ 2 windows"],
+        get_current_session=lambda: "alpha",
+        get_attached_session_names=lambda: ["alpha"],
+        detach_session_selector=lambda _items, _header, _include_preview: None,
+        detach_session=lambda target: detached.append(target) or None,
+    )
+
+    result = run_detach(_context(action="detach", deps=deps))
+
+    assert result == EXIT_SUCCESS
+    assert detached == []
+
+
+def test_run_detach_returns_error_for_invalid_target_name() -> None:
+    detached: list[str] = []
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["bad:name @ 1 windows"],
+        get_current_session=lambda: "alpha",
+        get_attached_session_names=lambda: ["bad:name"],
+        detach_session_selector=lambda _items, _header, _include_preview: (
+            "[1] bad:name @ 1 windows"
+        ),
+        detach_session=lambda target: detached.append(target) or None,
+    )
+
+    result = run_detach(_context(action="detach", deps=deps))
+
+    assert result == EXIT_ERROR
+    assert detached == []
+
+
+def test_run_detach_stops_and_returns_error_if_mutation_fails() -> None:
+    detached: list[str] = []
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["alpha @ 2 windows"],
+        get_current_session=lambda: "alpha",
+        get_attached_session_names=lambda: ["alpha"],
+        detach_session_selector=lambda _items, _header, _include_preview: "[current]",
+        detach_session=lambda _target: False,
+    )
+
+    result = run_detach(_context(action="detach", deps=deps))
+
+    assert result == EXIT_ERROR
+    assert detached == []
+
+
+def test_run_detach_handles_attached_names_as_string() -> None:
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["alpha @ 2 windows"],
+        get_current_session=lambda: "alpha",
+        get_attached_session_names=lambda: "alpha",
+        detach_session_selector=lambda items, _h, _p: items[0],
+        detach_session=lambda _target: None,
+    )
+
+    result = run_detach(_context(action="detach", deps=deps))
+
+    assert result == EXIT_SUCCESS
+
+
+def test_run_detach_returns_success_for_none_attached_names() -> None:
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["alpha @ 2 windows"],
+        get_current_session=lambda: "alpha",
+        get_attached_session_names=lambda: None,
+        detach_session_selector=lambda items, _h, _p: items[0],
+        detach_session=lambda _target: None,
+    )
+
+    result = run_detach(_context(action="detach", deps=deps))
+
+    assert result == EXIT_SUCCESS
+
+
+def test_run_detach_raises_type_error_for_invalid_attached_names_type() -> None:
+    deps = SimpleNamespace(
+        list_session_rows=lambda: ["alpha @ 2 windows"],
+        get_current_session=lambda: "alpha",
+        get_attached_session_names=lambda: 123,
+        detach_session_selector=lambda _i, _h, _p: "",
+        detach_session=lambda _target: None,
+    )
+
+    with pytest.raises(
+        TypeError, match="get_attached_session_names must return an iterable or None"
+    ):
+        run_detach(_context(action="detach", deps=deps))
+
+
+@pytest.mark.parametrize(
+    "attr_name",
+    (
+        "list_session_rows",
+        "get_current_session",
+        "detach_session_selector",
+        "get_attached_session_names",
+        "detach_session",
+    ),
+)
+def test_run_detach_requires_expected_callable_dependencies(attr_name: str) -> None:
+    deps = SimpleNamespace(
+        list_session_rows=lambda: [],
+        get_current_session=lambda: "",
+        detach_session_selector=lambda _items, _header, _include_preview: "",
+        get_attached_session_names=lambda: [],
+        detach_session=lambda _target: None,
+    )
+    setattr(deps, attr_name, None)
+
+    with pytest.raises(
+        TypeError, match=f"Context deps must expose a callable {attr_name}"
+    ):
+        run_detach(_context(action="detach", deps=deps))
+
+
+def test_build_selection_items_handles_no_current_session() -> None:
+    rows = ["alpha @ 1 windows", "beta @ 2 windows"]
+    result = _build_selection_items(rows, "", include_current=True)
+    assert result == [
+        CURRENT_ITEM,
+        "[1] alpha @ 1 windows",
+        "[2] beta @ 2 windows",
+        CANCEL_ITEM,
+    ]
+
+
+def test_build_selection_items_handles_no_current_session_exclude_current() -> None:
+    rows = ["alpha @ 1 windows", "beta @ 2 windows"]
+    result = _build_selection_items(rows, "", include_current=False)
+    assert result == [
+        "[1] alpha @ 1 windows",
+        "[2] beta @ 2 windows",
+        CANCEL_ITEM,
+    ]
+
+
 def test_run_kill_kills_targets_in_reverse_sorted_order() -> None:
     captured: dict[str, object] = {}
     killed: list[str] = []
