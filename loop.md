@@ -1,4 +1,8 @@
-first of all: in each tests/*.py file change the script we run from *.mjs to *.py pls;
+FINAL goal: we MUST rewrite *.mjs file into python; we're partially did this; Now we're somewhere in the middle;
+We MUST not execute this mjs script at all during ANY steps (it's kept only as a working reference);
+
+CRUCIAL: we have nvim session-zx.py, but this is SHITTY solution, it's ABSOLUTELY unacceptable to run it in the integration tests cause it calls mjs script; mjs script MUST Not be called; we already have the full python implementation. or if we don't have something: we MUST implement it.
+
 
 Run child Codex agents sequentially from this parent Codex session.
 No shell loops. No parallel runs. Start each run only after the previous run fully exits.

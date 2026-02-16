@@ -1,4 +1,4 @@
-"""Test that session-zx.mjs script executes correctly."""
+"""Test that session-zx.py script executes correctly."""
 import os
 import time
 import pexpect
@@ -6,18 +6,18 @@ import pexpect
 
 def test_script_exists():
     """Verify the script file exists."""
-    assert os.path.exists("session-zx.mjs")
+    assert os.path.exists("session-zx.py")
 
 
 def test_script_is_executable():
     """Verify the script has execute permissions."""
-    assert os.access("session-zx.mjs", os.X_OK)
+    assert os.access("session-zx.py", os.X_OK)
 
 
 def test_script_runs_without_error():
     """Test that script can be executed without crashing."""
     # Run the script and immediately send ESC to cancel
-    proc = pexpect.spawn("node session-zx.mjs", encoding='utf-8', timeout=10)
+    proc = pexpect.spawn("./session-zx.py", encoding='utf-8', timeout=10)
 
     try:
         # Wait for fzf to appear (look for prompt or header)
@@ -42,7 +42,7 @@ def test_script_runs_without_error():
 
 def test_script_shows_action_menu():
     """Test that script shows the action menu when run without arguments."""
-    proc = pexpect.spawn("node session-zx.mjs", encoding='utf-8', timeout=10)
+    proc = pexpect.spawn("./session-zx.py", encoding='utf-8', timeout=10)
 
     try:
         # Wait for action menu header or prompt

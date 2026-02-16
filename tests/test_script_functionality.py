@@ -12,7 +12,7 @@ import pytest
 
 def run_script_reload():
     """Run the script's reload-sessions action and return output."""
-    return os.popen("node /app/session-zx.mjs reload-sessions").read()
+    return os.popen("/app/session-zx.py reload-sessions").read()
 
 def test_script_lists_sessions_correctly():
     """Test that the script's reload-sessions action lists created sessions."""

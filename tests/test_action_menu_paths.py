@@ -3,7 +3,7 @@ import time
 
 
 def test_action_menu_shows_all_options(tmux):
-    tmux.run_command("node /app/session-zx.mjs")
+    tmux.run_command("/app/session-zx.py")
     time.sleep(1.5)
 
     content = tmux.get_output()
@@ -18,7 +18,7 @@ def test_action_menu_shows_all_options(tmux):
 def test_action_menu_cancel_does_nothing(tmux):
     before = tmux.get_current_session()
 
-    tmux.run_command("node /app/session-zx.mjs")
+    tmux.run_command("/app/session-zx.py")
     time.sleep(1.0)
     tmux.send_keys("cancel")
     time.sleep(0.5)
@@ -32,7 +32,7 @@ def test_action_menu_cancel_does_nothing(tmux):
 def test_action_menu_selects_switch_then_switches(tmux, create_sessions):
     create_sessions("menu_target")
 
-    tmux.run_command("node /app/session-zx.mjs")
+    tmux.run_command("/app/session-zx.py")
     time.sleep(1.5)
 
     tmux.send_keys("switch")

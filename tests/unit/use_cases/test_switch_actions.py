@@ -40,7 +40,7 @@ def test_run_switch_calls_selector_with_parity_values_and_switches_target() -> N
         switch_session_selector=selector,
         switch_client=lambda target: switched_targets.append(target) or True,
         record_frecency=lambda target: recorded_targets.append(target),
-        switch_script_path="/app/session-zx.mjs",
+        switch_script_path="/app/session-zx.py",
     )
 
     result = run_switch(_context_with_deps(deps))
@@ -53,10 +53,10 @@ def test_run_switch_calls_selector_with_parity_values_and_switches_target() -> N
         "header": SWITCH_HEADER,
         "include_preview": True,
         "extra_bindings": (
-            "--bind 'del:execute(/app/session-zx.mjs kill-single-from-line {})+reload("
-            "/app/session-zx.mjs reload-sessions)' --bind "
-            "'ctrl-n:down+execute-silent(/app/session-zx.mjs switch-from-line {})' "
-            "--bind 'ctrl-p:up+execute-silent(/app/session-zx.mjs switch-from-line {})' "
+            "--bind 'del:execute(/app/session-zx.py kill-single-from-line {})+reload("
+            "/app/session-zx.py reload-sessions)' --bind "
+            "'ctrl-n:down+execute-silent(/app/session-zx.py switch-from-line {})' "
+            "--bind 'ctrl-p:up+execute-silent(/app/session-zx.py switch-from-line {})' "
             "--bind '1:pos(1)+accept,2:pos(2)+accept,3:pos(3)+accept,4:pos(4)+accept,"
             "5:pos(5)+accept,6:pos(6)+accept,7:pos(7)+accept,8:pos(8)+accept,"
             "9:pos(9)+accept'"
@@ -245,14 +245,14 @@ def test_build_switch_bindings_validates_script_path(
 
 
 def test_build_switch_bindings_returns_expected_bindings() -> None:
-    bindings = _build_switch_bindings("/app/session-zx.mjs")
+    bindings = _build_switch_bindings("/app/session-zx.py")
 
     assert (
         bindings
-        == "--bind 'del:execute(/app/session-zx.mjs kill-single-from-line {})+reload("
-        "/app/session-zx.mjs reload-sessions)' --bind "
-        "'ctrl-n:down+execute-silent(/app/session-zx.mjs switch-from-line {})' "
-        "--bind 'ctrl-p:up+execute-silent(/app/session-zx.mjs switch-from-line {})' "
+        == "--bind 'del:execute(/app/session-zx.py kill-single-from-line {})+reload("
+        "/app/session-zx.py reload-sessions)' --bind "
+        "'ctrl-n:down+execute-silent(/app/session-zx.py switch-from-line {})' "
+        "--bind 'ctrl-p:up+execute-silent(/app/session-zx.py switch-from-line {})' "
         "--bind '1:pos(1)+accept,2:pos(2)+accept,3:pos(3)+accept,4:pos(4)+accept,"
         "5:pos(5)+accept,6:pos(6)+accept,7:pos(7)+accept,8:pos(8)+accept,"
         "9:pos(9)+accept'"
