@@ -32,6 +32,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `context` module implemented in `session_zx/app/context.py` with unit tests in `tests/unit/app/test_context.py` (2026-02-16).
 - [x] `router` module implemented in `session_zx/app/router.py` with unit tests in `tests/unit/app/test_router.py` (2026-02-16).
 - [x] `errors` module implemented in `session_zx/domain/errors.py` with unit tests in `tests/unit/domain/test_errors.py` (2026-02-16).
+- [x] `models` module implemented in `session_zx/domain/models.py` with unit tests in `tests/unit/domain/test_models.py` (2026-02-16).
 
 ## 1. Scope and non-goals for this phase
 
