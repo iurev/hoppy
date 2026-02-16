@@ -39,6 +39,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `popup_actions` module implemented in `session_zx/use_cases/popup_actions.py` with unit tests in `tests/unit/use_cases/test_popup_actions.py` (2026-02-16).
 - [x] `switch_actions` module implemented in `session_zx/use_cases/switch_actions.py` with unit tests in `tests/unit/use_cases/test_switch_actions.py` (2026-02-16).
 - [x] `helper_actions` module implemented in `session_zx/use_cases/helper_actions.py` with unit tests in `tests/unit/use_cases/test_helper_actions.py` (2026-02-16).
+- [x] `mutation_actions` module implemented in `session_zx/use_cases/mutation_actions.py` with unit tests in `tests/unit/use_cases/test_mutation_actions.py` (2026-02-16).
 - [x] Added executable compatibility shim `session-zx.py` forwarding to `session-zx.mjs`; end-to-end Docker suite now passes (`258 passed`) (2026-02-16).
 - [x] Restored missing executable compatibility shim `session-zx.py` (Path C integration fix); Docker integration suite passes again (2026-02-16).
 
