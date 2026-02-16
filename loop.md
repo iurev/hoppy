@@ -1,3 +1,5 @@
+first of all: in each tests/*.py file change the script we run from *.mjs to *.py pls;
+
 Run child Codex agents sequentially from this parent Codex session.
 No shell loops. No parallel runs. Start each run only after the previous run fully exits.
 
