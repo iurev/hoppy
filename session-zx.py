@@ -15,16 +15,20 @@ if __name__ == "__main__":
     from session_zx.adapters.env_file import EnvFileAdapter
     from session_zx.app.context import load_runtime_env, apply_env_defaults
     
+    import os
+
     env_port = EnvFileAdapter()
-    loaded_env = load_runtime_env(env_port, [
+    file_env = load_runtime_env(env_port, [
         script_dir / ".envs",
         Path.home() / ".tmux" / "plugins" / "tmux-fzf" / "scripts" / ".envs",
     ])
-    # Apply defaults and current os.environ
-    resolved_env = apply_env_defaults(loaded_env, "(^_^)")
-    
+    # Start from os.environ so shell/tmux env vars are preserved,
+    # then overlay with file values, then apply defaults for missing keys.
+    merged_env = dict(os.environ)
+    merged_env.update(file_env)
+    resolved_env = apply_env_defaults(merged_env, "(^_^)")
+
     # Update process environment so all subprocesses inherit it
-    import os
     os.environ.update(resolved_env)
     
     # 3. Compose application with resolved environment

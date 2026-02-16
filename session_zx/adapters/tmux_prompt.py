@@ -45,6 +45,11 @@ class TmuxPromptAdapter:
                 r, _, _ = select.select([fifo], [], [], 30)
                 if r:
                     result = fifo.read().strip()
+                    # The split-window -b stole focus; return it to the
+                    # original pane so subsequent fzf interaction works.
+                    subprocess.run(
+                        ["tmux", "select-pane", "-l"], check=False
+                    )
                     return result
                     
         except Exception:
