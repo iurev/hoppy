@@ -68,3 +68,54 @@ class TmuxCliAdapter(TmuxPort):
         """Execute tmux detach-client -s."""
         code, _, _ = self.process.run(["tmux", "detach-client", "-s", target])
         return code == 0
+
+    def get_pane_current_path(self) -> str:
+        """Execute tmux display-message to get current pane path."""
+        code, stdout, _ = self.process.run(["tmux", "display-message", "-p", "#{pane_current_path}"])
+        return stdout.strip() if code == 0 else ""
+
+    def get_git_worktrees(self, dir_path: str) -> Sequence[str]:
+        """Execute git worktree list to find all worktree paths for a directory."""
+        if not dir_path:
+            return []
+        code, stdout, _ = self.process.run(
+            ["git", "-C", dir_path, "worktree", "list", "--porcelain"]
+        )
+        if code != 0:
+            return []
+
+        paths = []
+        for line in stdout.split("\n"):
+            if line.startswith("worktree "):
+                paths.append(line[9:])  # Remove 'worktree ' prefix
+        return paths
+
+    def get_all_pane_paths(self) -> dict[str, set[str]]:
+        """Execute tmux list-panes -a to get all pane paths grouped by session."""
+        code, stdout, _ = self.process.run(
+            ["tmux", "list-panes", "-a", "-F", "#{session_name}\t#{pane_current_path}"]
+        )
+        if code != 0:
+            return {}
+
+        session_paths: dict[str, set[str]] = {}
+        for line in parse_lines(stdout):
+            parts = line.split("\t")
+            if len(parts) == 2:
+                session_name, pane_path = parts
+                session_paths.setdefault(session_name, set()).add(pane_path)
+        return session_paths
+
+    def display_popup(self, title: str, child_action: str) -> int:
+        """Execute tmux display-popup to run a sub-action."""
+        # We need the path to the current script
+        import sys
+        script_path = sys.argv[0]
+        
+        cmd = [
+            "tmux", "display-popup", "-E", "-w", "60%", "-h", "90%",
+            "-x", "R", "-y", "C", "-T", title, "-b", "rounded",
+            script_path, child_action
+        ]
+        code, _, _ = self.process.run(cmd)
+        return code

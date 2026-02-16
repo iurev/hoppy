@@ -58,6 +58,9 @@ def run_new(ctx: AppContext) -> int:
 
 def run_rename(ctx: AppContext) -> int:
     """Rename a selected session to a prompted new session name."""
+    log_event = cast(Callable[[str], None], getattr(ctx.deps, "log_event", lambda _: None))
+    log_event("run_rename started")
+    
     prompt_session_name = cast(
         SessionNamePrompter,
         _require_callable(ctx.deps, "prompt_session_name"),
@@ -80,32 +83,43 @@ def run_rename(ctx: AppContext) -> int:
     )
 
     session_name = _normalize_optional_text(prompt_session_name()).strip()
+    log_event(f"run_rename: prompted name = '{session_name}'")
     if not session_name:
         return EXIT_SUCCESS
 
     try:
         validate_session_name(session_name)
-    except ValueError:
+    except ValueError as e:
+        log_event(f"run_rename: invalid name: {e}")
         return EXIT_ERROR
 
     rows = [str(row) for row in (list_session_rows() or ())]
     current_session = _normalize_optional_text(get_current_session())
     selection_items = _build_selection_items(rows, current_session, include_current=True)
+    
+    log_event("run_rename: showing selector")
     selection = rename_session_selector(selection_items, RENAME_HEADER, True)
+    log_event(f"run_rename: selection = '{selection}'")
+    
     targets = _parse_selection_targets(selection, current_session)
+    log_event(f"run_rename: targets = {targets}")
     if not targets:
         return EXIT_SUCCESS
 
     target = targets[0]
     try:
         validate_session_name(target)
-    except ValueError:
+    except ValueError as e:
+        log_event(f"run_rename: invalid target name: {e}")
         return EXIT_ERROR
 
-    return _normalize_mutation_result(
+    log_event(f"run_rename: renaming '{target}' to '{session_name}'")
+    result = _normalize_mutation_result(
         rename_session(target, session_name),
         "rename_session",
     )
+    log_event(f"run_rename: result = {result}")
+    return result
 
 
 def run_kill(ctx: AppContext) -> int:

@@ -73,6 +73,97 @@ def run_switch(ctx: AppContext) -> int:
     return EXIT_SUCCESS
 
 
+def run_worktree_switch(ctx: AppContext) -> int:
+    """Run the filtered worktree switch flow."""
+    from session_zx.domain.filtering import filter_sessions_by_worktrees
+
+    list_session_rows = _get_session_rows_loader(ctx.deps)
+    get_current_session = _get_current_session_loader(ctx.deps)
+    switch_session_selector = _get_switch_session_selector(ctx.deps)
+    switch_client = _get_switch_client(ctx.deps)
+    record_frecency = _get_optional_frecency_recorder(ctx.deps)
+
+    # We need additional loaders for worktrees
+    get_git_worktrees = cast(Callable[[str], Sequence[str]], _require_callable(ctx.deps, "get_git_worktrees"))
+    get_all_pane_paths = cast(Callable[[], dict[str, set[str]]], _require_callable(ctx.deps, "get_all_pane_paths"))
+    get_pane_current_path = cast(Callable[[], str], _require_callable(ctx.deps, "get_pane_current_path"))
+
+    current_path = get_pane_current_path()
+    worktrees = list(get_git_worktrees(current_path))
+    if not worktrees:
+        return EXIT_SUCCESS
+
+    all_rows = [str(row) for row in (list_session_rows() or ())]
+    pane_paths = get_all_pane_paths()
+    filtered_rows = filter_sessions_by_worktrees(all_rows, worktrees, pane_paths)
+
+    if not filtered_rows:
+        return EXIT_SUCCESS
+
+    current_session = _normalize_optional_text(get_current_session())
+    items = _build_switch_items(filtered_rows, current_session)
+    try:
+        extra_bindings = _build_switch_bindings(_get_switch_script_path(ctx.deps))
+    except (TypeError, ValueError):
+        return EXIT_ERROR
+
+    header = f"Worktree sessions ({len(filtered_rows)}/{len(all_rows)}). Ctrl+N/P to preview."
+    selection = switch_session_selector(items, header, True, extra_bindings)
+    targets = parse_targets(None if selection is None else str(selection), current_session)
+    if not targets:
+        return EXIT_SUCCESS
+
+    target = targets[0]
+    switch_result = _normalize_switch_result(switch_client(target))
+    if switch_result != EXIT_SUCCESS:
+        return switch_result
+
+    if record_frecency is not None:
+        record_frecency(target)
+
+    return EXIT_SUCCESS
+
+
+def run_capital_switch(ctx: AppContext) -> int:
+    """Run the filtered capital-session switch flow."""
+    from session_zx.domain.filtering import filter_capital_sessions
+
+    list_session_rows = _get_session_rows_loader(ctx.deps)
+    get_current_session = _get_current_session_loader(ctx.deps)
+    switch_session_selector = _get_switch_session_selector(ctx.deps)
+    switch_client = _get_switch_client(ctx.deps)
+    record_frecency = _get_optional_frecency_recorder(ctx.deps)
+
+    all_rows = [str(row) for row in (list_session_rows() or ())]
+    filtered_rows = filter_capital_sessions(all_rows)
+
+    if not filtered_rows:
+        return EXIT_SUCCESS
+
+    current_session = _normalize_optional_text(get_current_session())
+    items = _build_switch_items(filtered_rows, current_session)
+    try:
+        extra_bindings = _build_switch_bindings(_get_switch_script_path(ctx.deps))
+    except (TypeError, ValueError):
+        return EXIT_ERROR
+
+    header = f"CAPITAL sessions ({len(filtered_rows)}/{len(all_rows)}). Ctrl+N/P to preview."
+    selection = switch_session_selector(items, header, True, extra_bindings)
+    targets = parse_targets(None if selection is None else str(selection), current_session)
+    if not targets:
+        return EXIT_SUCCESS
+
+    target = targets[0]
+    switch_result = _normalize_switch_result(switch_client(target))
+    if switch_result != EXIT_SUCCESS:
+        return switch_result
+
+    if record_frecency is not None:
+        record_frecency(target)
+
+    return EXIT_SUCCESS
+
+
 def _get_session_rows_loader(deps: object) -> SessionRowsLoader:
     list_session_rows = getattr(deps, "list_session_rows", None)
     if not callable(list_session_rows):
