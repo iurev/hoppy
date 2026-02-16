@@ -31,6 +31,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `exit_codes` module implemented in `session_zx/app/exit_codes.py` with unit tests in `tests/unit/app/test_exit_codes.py` (2026-02-16).
 - [x] `context` module implemented in `session_zx/app/context.py` with unit tests in `tests/unit/app/test_context.py` (2026-02-16).
 - [x] `router` module implemented in `session_zx/app/router.py` with unit tests in `tests/unit/app/test_router.py` (2026-02-16).
+- [x] `errors` module implemented in `session_zx/domain/errors.py` with unit tests in `tests/unit/domain/test_errors.py` (2026-02-16).
 
 ## 1. Scope and non-goals for this phase
 
