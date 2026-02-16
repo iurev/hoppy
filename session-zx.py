@@ -1,5 +1,6 @@
-#!/usr/bin/env sh
-set -eu
+#!/usr/bin/env python3
+import sys
+from session_zx.cli.main import main
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec "$SCRIPT_DIR/session-zx.mjs" "$@"
+if __name__ == "__main__":
+    sys.exit(main())

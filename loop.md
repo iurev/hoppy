@@ -4,7 +4,7 @@ We MUST not execute this mjs script at all during ANY steps (it's kept only as a
 CRUCIAL: we have nvim session-zx.py, but this is SHITTY solution, it's ABSOLUTELY unacceptable to run it in the integration tests cause it calls mjs script; mjs script MUST Not be called; we already have the full python implementation. or if we don't have something: we MUST implement it.
 
 
-Run child Codex agents sequentially from this parent Codex session.
+Run child Gemini agents sequentially from this parent Gemini session.
 No shell loops. No parallel runs. Start each run only after the previous run fully exits.
 
 Phase 1 status:
@@ -24,7 +24,7 @@ Runner contract (must match the working style that preserves blocked/error logs)
 2. Run from `/home/yu/my/hoppy`.
 3. Use absolute paths for prompt and log file.
 4. Keep `stdout`/`stderr` merged (`2>&1`) so Docker errors are logged.
-5. If using `tee`, capture Codex exit code from zsh `pipestatus[1]` (not `$?` after pipeline).
+5. If using `tee`, capture Gemini exit code from zsh `pipestatus[1]` (not `$?` after pipeline).
 
 Coverage policy for Python unit tests (Docker-only):
 1. Never run `python`/`uv` directly on host for coverage.
@@ -37,11 +37,11 @@ Coverage command template (per changed module):
 Coverage command example:
 `docker compose run --rm test pytest -q tests/unit/app/test_exit_codes.py --cov=session_zx.app.exit_codes --cov-branch --cov-report=term-missing`
 
-Command template (preferred, with live output via `tee`, example run `001`):
-`/bin/zsh -lc 'codex exec --dangerously-bypass-approvals-and-sandbox -C /home/yu/my/hoppy - < /home/yu/my/hoppy/prompt2.md 2>&1 | tee /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log; rc=${pipestatus[1]}; printf "\nEXIT_CODE:%s\n" "$rc" | tee -a /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log; exit "$rc"'`
+Command template (preferred, with live output via tee, example run 001):
+`/bin/zsh -lc 'gemini --yolo --no-sandbox --prompt "" < /home/yu/my/hoppy/prompt2.md 2>&1 | tee /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log; rc=${pipestatus[1]}; printf "\nEXIT_CODE:%s\n" "$rc" | tee -a /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log; exit "$rc"'`
 
-Command template (file-only, no live stream, example run `001`):
-`/bin/zsh -lc 'codex exec --dangerously-bypass-approvals-and-sandbox -C /home/yu/my/hoppy - < /home/yu/my/hoppy/prompt2.md > /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log 2>&1; rc=$?; printf "\nEXIT_CODE:%s\n" "$rc" >> /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log; exit "$rc"'`
+Command template (file-only, no live stream, example run 001):
+`/bin/zsh -lc 'gemini --yolo --no-sandbox --prompt "" < /home/yu/my/hoppy/prompt2.md > /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log 2>&1; rc=$?; printf "\nEXIT_CODE:%s\n" "$rc" >> /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log; exit "$rc"'`
 
 Implementation loop:
 1. Before each iteration, re-read `/home/yu/my/hoppy/loop.md` from disk (do not rely on cached instructions).
