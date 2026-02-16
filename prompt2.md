@@ -17,7 +17,7 @@ Hard rules:
 2. If baseline fails for unrelated reasons, stop with `BLOCKED_BASELINE` (no commit).
 3. Use Docker-based commands only (no direct `python`/`uv` execution in this repo).
 4. Do not batch unrelated modules/fixes/refactors in one run.
-5. Create exactly one commit in this run.
+5. If this run includes code/doc changes, create exactly one commit.
 6. Commits are module-sized (one whole module is allowed), not only function-sized.
 7. Tests are required for every code change.
 8. Unit-test coverage for every new or modified Python module must be 100% (line + branch).
@@ -30,14 +30,15 @@ Execution checklist:
    - Path A (new module): implement one missing module and its unit tests.
    - Path B (fix): implement one behavior fix and related tests.
    - Path C (integration): when all modules exist, run integration tests and fix integration issues until passing.
-4. Run tests until they pass.
+4. Run tests until they pass for the selected path.
 5. Prove 100% unit-test coverage (line + branch) for any module changed in this run.
 6. Run relevant regression tests for impacted behavior.
-7. Commit exactly once:
+7. Commit exactly once when files were changed:
    - `feat(py): implement <module_name> with tests`
    - or `fix(py): fix <behavior> with tests`
    - or `fix(py): make integration flow pass`
 8. Update `plan.md` progress for this single completed change package (same commit), then stop.
+9. If no change was needed (integration already passing), do not create an empty commit; return `STOP_READY`.
 
 Output contract (final line must be exactly one token):
 - `CONTINUE_NEXT` -> more work remains
