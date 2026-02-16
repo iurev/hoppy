@@ -54,8 +54,9 @@ Status: implementation in progress. Completed slices are tracked below.
 - New Python code must achieve 100% line + 100% branch coverage.
 - Docker-only command execution strategy; do not run host `python`/`uv` directly.
 - Atomic commits are mandatory:
-  - 1 small function + its unit tests (100% coverage for touched module) = 1 commit.
+  - 1 new module + its unit tests (100% coverage for touched module) = 1 commit.
   - 1 broken behavior + regression test + minimal fix = 1 commit.
+  - If integration is already fully passing and no file changes are needed, finish with `STOP_READY` and no empty commit.
 
 ## 2. Behavioral parity matrix: current `.mjs` behavior vs planned Python behavior
 
@@ -478,7 +479,7 @@ Acceptance criteria:
 | Debounce race drift | preview behavior mismatch | deterministic clock/random ports + race-focused unit tests |
 | Frecency payload mismatch | ranking regressions | fixture tests using real `.session-frecency` payload snapshots |
 | Worktree path edge cases | false positive/negative session filters | table-driven path normalization tests |
-| Coverage friction slows throughput | delivery drag | strict function-by-function commit slices and targeted gates |
+| Coverage friction slows throughput | delivery drag | strict module-by-module change packages and targeted gates |
 | Existing tests tied to Node invocation | migration friction | keep compatibility wrapper during transition; switch invocation only when parity proven |
 | Strict validator mismatches tmux real allowances | unexpected behavior changes | freeze current validator rules first; revisit only with approved change request |
 | Logging implementation drift | missing observability | explicit logger adapter unit tests including rotation thresholds |
@@ -504,32 +505,43 @@ Acceptance criteria:
 ## 11. Atomic commit strategy with concrete commit slicing rules
 
 ### Mandatory rules
-- Rule A: one production function + tests for that function + targeted 100% coverage gate in one commit.
-- Rule B: one broken behavior fix + one regression test + minimal fix in one commit.
+- Rule A: one change package per run and only one path:
+  - Path A: one new not-yet-implemented module + unit tests + 100% line/branch coverage for that module.
+  - Path B: one isolated broken-behavior fix + regression/unit tests + 100% coverage for changed module(s).
+  - Path C: integration stabilization once modules are implemented.
+- Rule B: start each run with Docker unit-test baseline and short code review of the touched area.
 - Rule C: no mixed-purpose commits (feature + refactor + infra together).
-- Rule D: if a shared type/dataclass is required, commit it first with exhaustive tests.
-- Rule E: each commit must leave repository in passing state for its targeted tests.
+- Rule D: if files were changed, create exactly one commit; if no changes are needed and integration is already green, return `STOP_READY` without an empty commit.
+- Rule E: each commit must leave repository in passing state for targeted tests and coverage gates.
 
-### Feature commit protocol
-1. Add one tiny function.
-2. Add unit tests that execute every branch in that function.
-3. Run targeted Docker coverage gate at 100%.
-4. Commit with `feat(<module>): <function behavior>`.
+### Path A protocol (new module)
+1. Choose one highest-priority missing module from `plan.md`.
+2. Implement that module with minimal branching and clear function boundaries.
+3. Add unit tests that execute all branches for that module.
+4. Run targeted Docker coverage gate at 100% for touched module(s).
+5. Run relevant regression tests for impacted behavior.
+6. Commit with `feat(py): implement <module_name> with tests`.
 
-### Fix commit protocol
-1. Add one failing regression test for one behavior.
-2. Apply smallest fix to restore behavior.
-3. Run targeted Docker coverage gate at 100%.
-4. Commit with `fix(<module>): <bug summary>`.
+### Path B protocol (fix)
+1. Run baseline unit tests in Docker and identify one isolated behavior issue.
+2. Add/update failing regression/unit test(s) for that issue.
+3. Apply the smallest safe fix.
+4. Run targeted Docker coverage gate at 100% for changed module(s).
+5. Run relevant regression tests for impacted behavior.
+6. Commit with `fix(py): fix <behavior> with tests`.
+
+### Path C protocol (integration)
+1. When modules are implemented, run integration tests in Docker.
+2. If failures exist, fix one integration issue package and add/adjust tests as needed.
+3. Re-run integration tests and impacted unit tests until passing.
+4. If files changed, commit with `fix(py): make integration flow pass`.
+5. If integration already passes and no files changed, return `STOP_READY` and do not create an empty commit.
 
 ### Concrete commit slicing examples
-- `feat(domain.parsing): add parse_lines empty-input guard`
-- `feat(domain.formatting): add add_number_prefixes skip-special-items`
-- `feat(domain.parsing): add extract_session_name stripping numeric prefix`
-- `feat(domain.debounce): add should_execute_delayed_switch token check`
-- `feat(adapters.fzf_cli): map exit codes 0/1/130 to non-fatal result`
-- `feat(use_cases.helper_actions): add switch_from_line spawn-or-fallback logic`
-- `fix(use_cases.helper_actions): fallback immediate switch when debounce write fails`
+- `feat(py): implement cli.main with tests`
+- `feat(py): implement use_cases.switch_actions with tests`
+- `fix(py): fix delayed-switch fallback with tests`
+- `fix(py): make integration flow pass`
 
 ### Per-commit verification template
 
