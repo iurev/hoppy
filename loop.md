@@ -49,3 +49,6 @@ Global stop rules:
 1. If any run exits non-zero, stop and report run index + exit code.
 2. If final token is missing/invalid, stop and report output as malformed.
 3. Keep per-run logs so each run is auditable.
+
+FINAL stop rules:
+you should run integration tests in the "tests/*.py" and they all should pass; note: change mjs script to py script which you wrote
