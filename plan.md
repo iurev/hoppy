@@ -36,6 +36,7 @@ Status: implementation in progress. Completed slices are tracked below.
 - [x] `main` module implemented in `session_zx/cli/main.py` with unit tests in `tests/unit/cli/test_main.py` (2026-02-16).
 - [x] `composition` module implemented in `session_zx/app/composition.py` with unit tests in `tests/unit/app/test_composition.py` (2026-02-16).
 - [x] `action_menu` module implemented in `session_zx/use_cases/action_menu.py` with unit tests in `tests/unit/use_cases/test_action_menu.py` (2026-02-16).
+- [x] `popup_actions` module implemented in `session_zx/use_cases/popup_actions.py` with unit tests in `tests/unit/use_cases/test_popup_actions.py` (2026-02-16).
 
 ## 1. Scope and non-goals for this phase
 
