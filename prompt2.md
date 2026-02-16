@@ -23,6 +23,12 @@ Hard rules:
 8. Unit-test coverage for every new or modified Python module must be 100% (line + branch).
 9. Unit tests may use mocks at external boundaries (tmux/fzf/subprocess/fs/time/env).
 
+Coverage command template (Docker-only, required for step 5):
+`docker compose run --rm test sh -lc 'pip install coverage pytest-cov >/tmp/pip.log && pytest -q <unit_test_path> --cov=<python_module_import_path> --cov-branch --cov-report=term-missing'`
+
+Coverage command example:
+`docker compose run --rm test sh -lc 'pip install coverage pytest-cov >/tmp/pip.log && pytest -q tests/unit/app/test_exit_codes.py --cov=session_zx.app.exit_codes --cov-branch --cov-report=term-missing'`
+
 Execution checklist:
 1. Read `plan.md` and current implementation status.
 2. Run unit-test baseline in Docker before edits.
