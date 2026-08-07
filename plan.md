@@ -1,5 +1,33 @@
 # Python Rewrite Plan: `session-zx.mjs` -> modular Python CLI
 
+> ---
+> # ⚠️ HISTORICAL DOCUMENT — DO NOT IMPLEMENT FROM THIS FILE
+>
+> This plan belongs to the **abandoned Python rewrite**. The project now targets **Go**.
+>
+> **`SPEC.md` supersedes this file.** `SPEC.md` is the sole, trusted basis for the Go rewrite.
+> Where the two disagree, `SPEC.md` wins. This file is kept only as history.
+>
+> ## Rows of "§2. Behavioral parity matrix" that are now known to be WRONG
+>
+> The matrix describes several broken features as if they work. Corrected below.
+>
+> | Row in §2 | What the row claims | What is actually true | See |
+> |---|---|---|---|
+> | **New session** | "FIFO prompt -> validate name -> `tmux new-session -d -s` -> `tmux switch-client -t`" | **Broken today.** The FIFO prompt always returns an **empty** name because of a shell-quoting bug, so `new` always exits 0 without creating anything. The tests hide this by writing the name straight into `/tmp/tmux_fzf_session_name`. | SPEC.md Q8, §3.8 |
+> | **Rename session** | "FIFO prompt for new name -> fzf target select -> `tmux rename-session`" | **Broken today**, same cause. `rename` always exits 0 before the selector is shown. | SPEC.md Q8, §3.12 |
+> | **Detach session(s)** | "Filters to attached sessions and prepends `[current]`" | The filter **always yields zero sessions**, because the attached-name lookup compares two different string formats. The picker only ever shows `[current]` and `[cancel]`. Detaching the **current** session does work; detaching any **other** session is impossible. | SPEC.md Q3, §3.14.1 |
+> | **Env defaults** | "…optional kaomoji preview text var" | The kaomoji preview never worked: the guard tests `TMUX_FZF_PREVIEW_OPTIONS` but the body assigns `KAOMOJI_PREVIEW_TEXT`, and the line that would use it is commented out. Nothing reads the variable. **The Go port DROPS this feature entirely.** | SPEC.md Q2, §0.2 |
+> | **Main switch key bindings** | "`ctrl-n/p` preview switch helper" | This one is **correct and is KEPT in full**. It is a different feature from the kaomoji pane above — do not confuse them. | SPEC.md §0.2, §7 |
+> | **Current session position** | "current session line is moved to top when present" | Correct, and the Go port **keeps** it (owner decision). `TMUX_FZF_SWITCH_CURRENT` is dead code and is deleted, not implemented. | SPEC.md D3, Q1, Q13 |
+> | **Frecency sort** | "Reads `.session-frecency` localStorage payload" | The Go port uses a **new JSON format that we own**. It does not read the `node-localstorage` / `@getstation/frecency` layout. Score buckets are unchanged. | SPEC.md D6, §0.3 |
+> | **Logging and rotation** | "Same behavior" | The rotation code has a **wipe bug**: one over-long line erases the whole log. The Go port fixes it, and logs only ~20 key events instead of all 167. | SPEC.md D4, §13.2, §13.3 |
+>
+> One more thing the matrix never mentions: every `` $`…` `` command in the `.mjs` runs through
+> `bash -c`, so the quotes shown in command examples are **shell** quotes that bash removes.
+> Copying them into Go breaks the tool silently. See **SPEC.md §0.9**.
+> ---
+
 Status: implementation in progress. Completed slices are tracked below.
 
 ## Implementation progress
