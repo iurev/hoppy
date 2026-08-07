@@ -1,14 +1,42 @@
-version: '3.8'
-
+# Go and Python both run ONLY inside these services. Never on the host.
+#
+#   docker compose run --rm build            # compile ./session-zx
+#   docker compose run --rm test             # run the 43 pytest tests
+#   docker compose run --rm build go test ./...   # Go unit tests
+#
 services:
+  # The test harness. Python, pytest, tmux, pinned fzf. No Go, no Node.
   test:
-    build: .
+    build:
+      context: .
+      target: test
     volumes:
       - .:/app
-      - /app/node_modules
     environment:
       - TERM=xterm-256color
       - PYTHONUNBUFFERED=1
     stdin_open: true
     tty: true
     command: pytest -v
+
+  # The Go toolchain. It compiles THROUGH the bind mount, so the binary lands
+  # at ./session-zx on the host and at /app/session-zx in the test container.
+  # Do not move it: <appDir> must stay /app or tests/conftest.py:37 stops
+  # cleaning .session-frecency.
+  build:
+    build:
+      context: .
+      target: gotools
+    working_dir: /app
+    volumes:
+      - .:/app
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/root/.cache/go-build
+    environment:
+      - CGO_ENABLED=0
+    command: go build -o session-zx .
+
+volumes:
+  # Named caches keep a warm rebuild near instant when only Go code changes.
+  gomodcache:
+  gobuildcache:

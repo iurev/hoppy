@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .session-frecency/
 session-zx.log
+session-zx
 test_output/
 .venv/
 uv.lock
