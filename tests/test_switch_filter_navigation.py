@@ -9,7 +9,7 @@ from .helpers.workflow import clear_query, run_popup_switch
 def test_switch_typing_filters_fzf_list(tmux, create_sessions):
     create_sessions("alpha", "beta", "gamma")
 
-    tmux.run_command("/app/session-zx.py switch")
+    tmux.run_command("/app/session-zx switch")
     time.sleep(1.5)
 
     content = tmux.get_output()
@@ -35,7 +35,7 @@ def test_switch_arrow_down_then_enter_switches(tmux, create_sessions):
     create_sessions("arrow_pick")
     tmux.assert_current_session("test_session")
 
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx.py switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
     time.sleep(1.5)
 
     tmux.press_arrow_down()
@@ -51,7 +51,7 @@ def test_switch_arrow_down_then_enter_switches(tmux, create_sessions):
 def test_switch_arrow_up_changes_cursor_then_switches(tmux, create_sessions):
     create_sessions("up_a", "up_b", "up_c")
 
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx.py switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
     time.sleep(1.5)
 
     tmux.press_arrow_down()
@@ -78,7 +78,7 @@ def test_switch_arrow_up_changes_cursor_then_switches(tmux, create_sessions):
 def test_switch_clear_filter_with_backspaces(tmux, create_sessions):
     create_sessions("alpha", "beta")
 
-    tmux.run_command("/app/session-zx.py switch")
+    tmux.run_command("/app/session-zx switch")
     time.sleep(1.5)
 
     tmux.send_keys("xxxxx")
@@ -113,7 +113,7 @@ def test_switch_clear_filter_with_backspaces(tmux, create_sessions):
 def test_switch_filter_then_arrow_selects_second_match(tmux, create_sessions):
     create_sessions("proj_alpha", "proj_beta", "other")
 
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx.py switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
     time.sleep(1.5)
     tmux.send_keys("proj_")
     time.sleep(0.5)
@@ -128,7 +128,7 @@ def test_switch_filter_then_arrow_selects_second_match(tmux, create_sessions):
     os.system("tmux switch-client -t test_session")
     time.sleep(0.5)
 
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx.py switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
     time.sleep(1.5)
     tmux.send_keys("proj_")
     time.sleep(0.5)

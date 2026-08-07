@@ -1,42 +1,199 @@
 // log.go — the append-only event log and its in-place rotation.
 //
-// SPEC §13, §13.2 (the ~20 events we keep) and §13.3 (the wipe bug we must fix).
+// SPEC §13, §13.2 (the ~20 events we keep) and §13.3 (the wipe bug we fix).
 //
 // Line format, byte-identical to the .mjs:
 //
 //	<ISO-8601 UTC, milliseconds, Z> <space> <message> \n
 //	2026-07-20T11:06:44.123Z action=switch: complete
 //
-// Go format string: "2006-01-02T15:04:05.000Z" on a UTC time.
-//
-// Failure policy: swallow every error. Logging must never break the tool, so
-// logEvent returns nothing.
-//
-// Rotation, checked before every append:
-//
-//	stat; if size <= LOG_MAX_BYTES do nothing.
-//	Else walk lines backwards, keeping newest, up to LOG_TRIM_TARGET bytes.
-//	M10 fix rules:
-//	  - never produce an empty result while lines still fit
-//	  - if the newest line alone is over the target, keep THAT ONE line
-//	  - if the newest line alone is over LOG_MAX_BYTES, truncate the LINE
-//	  - write the trimmed file atomically (writeAtomic in state.go)
-//
-// Planned functions:
-//
-//	logEvent(msg string)
-//	rotate(path string) error
-//	trimLines(lines []string, target, max int) []string  -- pure, table-tested
-//
-// NOT IMPLEMENTED YET.
+// Failure policy: swallow every error. Logging must never change the outcome
+// of an action, so logEvent returns nothing.
 package main
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+	"unicode/utf8"
+)
 
 const (
 	logFileName = "session-zx.log"
-	// LOG_MAX_BYTES = 256 * 1024
+	// LOG_MAX_BYTES = 256 * 1024. Above this size the file is rotated.
 	logMaxBytes = 262144
-	// LOG_TRIM_TARGET = floor(262144 * 0.8)
+	// LOG_TRIM_TARGET = floor(262144 * 0.8). Rotation keeps about this much.
 	logTrimTarget = 209715
-	// logTimeLayout is the exact .mjs toISOString() shape.
+	// logTimeLayout is the exact .mjs toISOString() shape. The trailing "Z" is
+	// a literal here: Go only treats "Z" as an offset when "07" follows it.
 	logTimeLayout = "2006-01-02T15:04:05.000Z"
 )
+
+// logPath is the full path of the log file. main sets it once with setLogPath.
+// While it is empty, logging is a no-op — that keeps unit tests silent.
+var logPath string
+
+// setLogPath points the logger at <appDir>/session-zx.log (SPEC §0.55).
+func setLogPath(appDir string) {
+	logPath = filepath.Join(appDir, logFileName)
+}
+
+// logEvent appends one event line. It rotates first if the file grew too big.
+// Every error is swallowed on purpose (SPEC §13).
+func logEvent(msg string) {
+	if logPath == "" {
+		return
+	}
+	_ = rotate(logPath)
+
+	line := time.Now().UTC().Format(logTimeLayout) + " " + msg + "\n"
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	_, _ = f.WriteString(line)
+	_ = f.Close()
+}
+
+// rotate trims the log in place when it is over logMaxBytes.
+// There is no .log.1 backup file: the newest lines are kept, older ones go.
+//
+// ACCEPTED RACE — not fixed, on purpose. Rotation is read + writeAtomic +
+// rename. If a second session-zx process holds an O_APPEND fd on the old inode
+// at that moment, its next write lands in the unlinked file and is lost, and a
+// line written between our ReadFile and our rename is lost too. Several
+// processes really do run at once: fzf's --bind calls re-invoke this binary
+// while the parent is still alive. We accept it because the log is a debugging
+// aid, the failure policy is "swallow everything" (SPEC §13), and the fix
+// (flock, or an append-only rotation daemon) costs more than a missing line.
+// Nothing in the program reads the log back.
+func rotate(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		// No file yet, so nothing to rotate.
+		return nil
+	}
+	if info.Size() <= logMaxBytes {
+		return nil
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	content := string(raw)
+	// A well-formed log ends with "\n". Splitting would then give a trailing
+	// empty element, which is not a real line.
+	content = strings.TrimSuffix(content, "\n")
+	lines := []string{}
+	if content != "" {
+		lines = strings.Split(content, "\n")
+	}
+
+	kept := trimLines(lines, logTrimTarget, logMaxBytes)
+	out := strings.Join(kept, "\n")
+	if out != "" {
+		out += "\n"
+	}
+	return writeAtomic(path, []byte(out), 0644)
+}
+
+// trimLines keeps the newest lines that fit in target bytes, counting one byte
+// for each line's newline. Input and output are newest-last.
+//
+// This is the M10 fix (SPEC §13.3). The .mjs walks backwards and, when the
+// newest line alone is bigger than the target, breaks with an index past every
+// line — so the whole log is erased. Three rules replace that:
+//
+//  1. never return an empty result while at least one line exists
+//  2. if the newest line alone is over target, keep exactly that one line
+//  3. if the newest line alone is over max, truncate the LINE, not the file
+func trimLines(lines []string, target, max int) []string {
+	if len(lines) == 0 {
+		return []string{}
+	}
+
+	bytesCount := 0
+	keepFrom := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		lineBytes := len(lines[i]) + 1 // + the newline
+		if bytesCount+lineBytes > target {
+			keepFrom = i + 1
+			break
+		}
+		bytesCount += lineBytes
+	}
+
+	// Rules 1 and 2: the newest line did not fit, so keep it alone.
+	if keepFrom >= len(lines) {
+		keepFrom = len(lines) - 1
+	}
+
+	kept := make([]string, len(lines)-keepFrom)
+	copy(kept, lines[keepFrom:])
+
+	// Rule 3: one line that is bigger than the whole budget gets cut short.
+	if len(kept) == 1 && len(kept[0])+1 > max {
+		kept[0] = truncateBytes(kept[0], max-1)
+	}
+	return kept
+}
+
+// truncateBytes cuts s down to at most n bytes without splitting a rune.
+func truncateBytes(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// writeAtomic writes data to path through a temp file in the same directory.
+//
+// Sync() before rename is not optional (SPEC §0.3): without it a power loss can
+// leave the renamed file full of zeros. The extra directory fsync is skipped on
+// purpose.
+//
+// Shared helper: SPEC §0.3 (frecency), §7.1 (debounce) and §13.3 (log rotation)
+// all use this one function. Do not write a second copy in state.go.
+func writeAtomic(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+
+	cleanup := func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
+}

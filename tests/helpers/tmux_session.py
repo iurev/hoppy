@@ -39,7 +39,7 @@ class TmuxSession:
 
     def run_popup_switch(self, action="popup-switch", wait=1.5):
         """Run popup action and wait for fzf to render."""
-        self.run_command(f"/app/session-zx.py {action}")
+        self.run_command(f"/app/session-zx {action}")
         time.sleep(wait)
         return self
 

@@ -458,7 +458,8 @@ Used by the DEL binding's `reload(...)` clause.
 4. `exit 0`.
 
 Output row format: `[1] name @ 3 windows`, `[2] other @ 1 windows`, … then unnumbered rows from
-the 10th onwards. **No `[cancel]` row is printed** (unlike the initial list). See quirk Q7.
+the 10th onwards. **No `[cancel]` row is printed** (unlike the initial list) — (`.mjs` today; the Go
+port does the opposite — Q7 FIX). See quirk Q7.
 If there are zero sessions, `console.log('')` prints a single empty line.
 
 **Go port (Q7 is labelled FIX — this changes steps 1 and 3):**
@@ -737,9 +738,9 @@ So `[cancel]` is always the last row of **`selectSessions`** (that is: `switch`,
 `worktree-switch`, `capital-switch`, `rename`, `kill`) and of `selectDetachSessions`
 (§3.14) and of the action menu (§3.1, where `[cancel]` is a normal list item).
 
-**Exception (C2/W7):** `reload-sessions` does **not** print a `[cancel]` row (line 92). It does
-not go through `selectSessions` at all — it prints to stdout for fzf's `reload` action. See §3.3
-and quirk Q7.
+**Exception (C2/W7):** `reload-sessions` does **not** print a `[cancel]` row (line 92) — (`.mjs`
+today; the Go port does the opposite — Q7 FIX). It does not go through `selectSessions` at all — it
+prints to stdout for fzf's `reload` action. See §3.3 and quirk Q7.
 
 ### 4.3 `addNumberPrefixes(items)` (1246-1263)
 
@@ -1562,7 +1563,8 @@ The Go port must:
 |---|
 | never produce an empty result while the file still holds lines that fit |
 | if the newest line alone is larger than the target, keep **that one line** and drop everything older |
-| if the newest line alone is larger than `LOG_MAX_BYTES`, truncate the line itself rather than the file |
+| if the newest line alone is larger than `LOG_MAX_BYTES`, truncate the line itself rather than the file. **Truncate to exactly `logMaxBytes - 1` bytes.** With the newline the rewritten file is then exactly `logMaxBytes`, and rotation is `size > logMaxBytes`, so the very next `logEvent` cannot immediately re-trigger rotation on the same line. Truncating to `logMaxBytes` would leave a `logMaxBytes + 1` file that rotates forever. |
+| truncate on a rune boundary, never in the middle of a UTF-8 sequence |
 | write the trimmed content atomically (temp file + `Sync()` + `rename`) so a crash cannot leave a half file. Use the same `writeAtomic` helper as §0.3 and §7.1. |
 
 ---
@@ -1671,7 +1673,7 @@ and exit 1. Note this is a deliberate difference from the `.mjs` and record it i
 | `.envs` missing in both locations | defaults are used | — |
 | `KaomojiList/kaomojis.json` missing | fallback `(^_^)` text; nothing observable, because nothing reads it | — |
 | `.session-frecency` directory missing | `node-localstorage` creates it; all scores are 0, so tmux's own order is kept | — |
-| DEL pressed in the `switch` list | the session under the cursor is killed and the list is reloaded via `reload-sessions`; the `[cancel]` row disappears after the reload | 0 |
+| DEL pressed in the `switch` list | the session under the cursor is killed and the list is reloaded via `reload-sessions`; the `[cancel]` row disappears after the reload — (`.mjs` today; the Go port does the opposite — Q7 FIX: the reloaded list keeps `[cancel]` and keeps the current session pinned) | 0 |
 | Selected line is the 10th or later (no `[N] ` prefix) and the name starts with `-` | minimist may parse the argument as a flag, so `argv._[1]` is missing and the helper becomes a no-op | 0 |
 | Argument is the literal `0` (session named `0`, or `session-zx.mjs 0`) | JavaScript treats `0` as falsy, so the argument is seen as missing — see §1.2 | 0 or 1 |
 | A tmux session whose name starts with `[` (e.g. `[work]`) | `addNumberPrefixes` gives it no number and consumes no number — see §4.3, M12 | 0 |

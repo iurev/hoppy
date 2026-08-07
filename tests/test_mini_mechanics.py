@@ -12,7 +12,7 @@ def test_pexpect_can_reach_fzf_in_popup(tmux, create_sessions):
     create_sessions("dummy_target")
 
     # Run popup-switch via pexpect
-    tmux.send_keys("/app/session-zx.py popup-switch")
+    tmux.send_keys("/app/session-zx popup-switch")
     tmux.press_enter()
     time.sleep(1.5)
 
@@ -39,7 +39,7 @@ def test_capture_pane_during_popup(tmux, create_sessions):
     create_sessions("cap_target")
 
     # Run popup-switch
-    tmux.send_keys("/app/session-zx.py popup-switch")
+    tmux.send_keys("/app/session-zx popup-switch")
     tmux.press_enter()
     time.sleep(1.5)
 
@@ -83,7 +83,7 @@ def test_send_keys_via_pexpect_reaches_fzf(tmux, create_sessions):
     create_sessions("visible_sess")
 
     # Run switch directly (no popup)
-    tmux.run_command("/app/session-zx.py switch")
+    tmux.run_command("/app/session-zx switch")
     time.sleep(1.5)
 
     # Type some filter text
@@ -107,7 +107,7 @@ def test_arrow_keys_work_in_fzf(tmux, create_sessions):
     create_sessions("arrow_a", "arrow_b")
 
     # Use --reverse so ArrowDown can move from top row to next row.
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx.py switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
     time.sleep(1.5)
 
     # Capture initial state

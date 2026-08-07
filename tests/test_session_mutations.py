@@ -5,7 +5,7 @@ from .helpers.workflow import clear_query, write_session_name_to_fifo
 
 
 def test_new_session_creation(tmux):
-    tmux.run_command("/app/session-zx.py new")
+    tmux.run_command("/app/session-zx new")
     time.sleep(2.0)
 
     write_session_name_to_fifo("fresh_session")
@@ -18,7 +18,7 @@ def test_new_session_creation(tmux):
 
 
 def test_rename_current_session(tmux):
-    tmux.run_command("/app/session-zx.py rename")
+    tmux.run_command("/app/session-zx rename")
     time.sleep(2.0)
 
     write_session_name_to_fifo("renamed_sess")
@@ -37,7 +37,7 @@ def test_rename_current_session(tmux):
 def test_rename_other_session(tmux, create_sessions):
     create_sessions("old_name")
 
-    tmux.run_command("/app/session-zx.py rename")
+    tmux.run_command("/app/session-zx rename")
     time.sleep(2.0)
 
     write_session_name_to_fifo("new_name")
@@ -57,7 +57,7 @@ def test_rename_other_session(tmux, create_sessions):
 def test_kill_action_removes_session(tmux, create_sessions):
     create_sessions("kill_me", "keep_me")
 
-    tmux.run_command("/app/session-zx.py kill")
+    tmux.run_command("/app/session-zx kill")
     time.sleep(1.5)
 
     tmux.send_keys("kill_me")
@@ -74,7 +74,7 @@ def test_kill_action_removes_session(tmux, create_sessions):
 def test_kill_multiple_sessions_with_tab(tmux, create_sessions):
     create_sessions("kill_a", "kill_b", "keep_c")
 
-    tmux.run_command("TMUX_FZF_OPTIONS='--multi' /app/session-zx.py kill")
+    tmux.run_command("TMUX_FZF_OPTIONS='--multi' /app/session-zx kill")
     time.sleep(1.5)
 
     tmux.send_keys("kill_a")
@@ -105,7 +105,7 @@ def test_kill_multiple_sessions_with_tab(tmux, create_sessions):
 def test_detach_action_keeps_target_session_present(tmux):
     tmux.assert_session_exists("test_session")
 
-    tmux.run_command("/app/session-zx.py detach")
+    tmux.run_command("/app/session-zx detach")
     time.sleep(1.5)
 
     tmux.send_keys("test_session")

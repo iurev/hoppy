@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 .session-frecency/
 session-zx.log
+# writeAtomic's temp file. A crash mid-rotation leaves one behind.
+.session-zx.log.tmp*
 session-zx
 test_output/
 .venv/

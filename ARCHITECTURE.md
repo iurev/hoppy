@@ -52,14 +52,42 @@ The previous Python attempt used 34 files and 6 layers. This is 8 files and 0 la
 | File | Responsibility | ~Lines | Key functions |
 |---|---|---|---|
 | `main.go` | Startup (§1), argv (§1.2), the action router (§2) in the exact `.mjs` order, and one small handler per action (§3). | 380 | `main`, `route`, `actionMenu`, `actionPopup`, `actionReloadSessions`, `actionKillSingleFromLine`, `actionSwitchFromLine`, `actionDelayedSwitch`, `actionKillSingle`, `actionNew`, `actionWorktreeSwitch`, `actionCapitalSwitch`, `actionSwitch`, `actionRename`, `actionKill`, `actionDetach` |
-| `tmux.go` | Every external process call: tmux, git. Holds the program's only seam, the `runner` func type. | 180 | `execRun`, `tmuxCurrentSession`, `tmuxListSessions`, `tmuxListPanePaths`, `tmuxSwitchClient`, `tmuxKillSession`, `tmuxNewSessionDetached`, `tmuxRenameSession`, `tmuxDetachClient`, `tmuxHasSession`, `tmuxDisplayMessage`, `tmuxDisplayPopup`, `tmuxSplitPrompt`, `tmuxKillPane`, `gitWorktrees` |
-| `sessions.go` | Building, ordering and filtering the session list (§4.1, §4.2, §6.3, §6.4, §3.10). | 200 | `getSessionsList`, `columnFormat`, `orderByFrecency`, `selectorItems`, `filterCapital`, `filterByWorktrees`, `attachedSessionNames` |
-| `text.go` | Pure string helpers and all validators (§4.3-§4.7, §11). No I/O. | 180 | `parseLines`, `dedupe`, `addNumberPrefixes`, `extractSessionName`, `parseTargets`, `splitShellWords`, `joinShellWords`, `assertValidSessionName`, `assertValidAction`, `assertValidHeader`, `assertValidFzfOptions`, `assertValidItemsArray` |
-| `fzf.go` | Building the fzf argv and running it (§10). Bindings, headers, exit codes. | 180 | `buildFzfArgv`, `runFzf`, `switchBindings`, `previewBindings` |
+| `tmux.go` | Every external process call: tmux, git. Holds the `runner` func type — seam 1 of 2. | 180 | `execRun`, `tmuxCurrentSession`, `tmuxListSessions`, `tmuxListPanePaths`, `tmuxSwitchClient`, `tmuxKillSession`, `tmuxNewSessionDetached`, `tmuxRenameSession`, `tmuxDetachClient`, `tmuxHasSession`, `tmuxDisplayMessage`, `tmuxDisplayPopup`, `tmuxSplitPrompt`, `tmuxKillPane`, `gitWorktrees` |
+| `sessions.go` | Building, ordering and filtering the session list (§4.1, §4.2, §6.3, §3.10). | 200 | `getSessionsList`, `orderByFrecency`, `selectorItems`, `filterCapital`, `filterByWorktrees` |
+| `text.go` | Pure string helpers and all validators (§4.3-§4.7, §11). No I/O. | 180 | `parseLines`, `dedupe`, `addNumberPrefixes`, `normalizeAtColumns`, `extractSessionName`, `parseTargets`, `splitShellWords`, `joinShellWords`, `assertValidSessionName`, `assertValidAction`, `assertValidHeader`, `assertValidFzfOptions`, `assertValidItemsArray` |
+| `fzf.go` | Building the fzf argv and running it (§10). Bindings, headers, exit codes. Holds the `fzfRunner` func type — seam 2 of 2, see §2.1.1. | 180 | `buildFzfArgv`, `runFzf`, `execFzf`, `switchBindings`, `previewBindings`, `numberBindings` |
 | `state.go` | The two JSON state files plus the atomic write they share: frecency (§0.3, §5) and debounce (§7). | 230 | `writeAtomic`, `loadFrecency`, `saveFrecency`, `recordSelection`, `score`, `readDebounce`, `writeDebounce`, `newToken`, `scheduleSessionSwitch`, `handleDelayedSwitch` |
 | `prompt.go` | The FIFO session-name prompt for `new` and `rename` (§9, §9.2.1, Q8). | 110 | `promptSessionName`, `makeFifo`, `readFirstLine` |
 | `log.go` | The event log and its in-place rotation (§13, M10 fix). | 110 | `logEvent`, `rotate`, `trimLines` |
 | **Total** | | **~1370** | |
+
+### 2.1.1 The two seams — a deliberate decision, not creeping abstraction
+
+The program has **exactly two** function-type seams and **zero** interfaces.
+The second one was added on purpose, reviewed, and approved. Here is why.
+
+| Seam | Type | File | Used for |
+|---|---|---|---|
+| 1 | `type runner func(argv ...string) (stdout string, err error)` | `tmux.go`, `var run runner = execRun` | every tmux and git call, plus the `bash -lc` used by `sourceEnv` |
+| 2 | `type fzfRunner func(argv []string, stdin string) (stdout, stderr string, code int, err error)` | `fzf.go`, `var runFzfCmd fzfRunner = execFzf` | fzf, and nothing else |
+
+`runner` cannot carry fzf. fzf needs four things it has no room for:
+
+| # | Need | Why `runner` cannot do it |
+|---|---|---|
+| 1 | items on **stdin** | `runner` takes argv only; the items are a data stream, not an argument, and there are up to 10000 of them (§11.5) |
+| 2 | the selection from **stdout** | this part `runner` does handle |
+| 3 | fzf's **stderr**, kept separate | log message 17 prints it verbatim (SPEC §13.2). `execRun` folds stderr into the error text, so it can only ever be read back out of a formatted string |
+| 4 | the **exit code** as a value | SPEC §12: `0`, `1` and `130` are all NORMAL and all yield stdout; `2` and everything else are errors. `runner` returns `error`, so "normal" and "failed" would have to be told apart by parsing an error message |
+
+The alternative was to widen `runner` to seven return values for the benefit of
+one caller, or to encode the exit code into an error string and parse it back.
+Both are worse than a second three-line type.
+
+**The abstraction budget is now spent.** Two func types, no interfaces, no third
+seam. Rule 3 of §6 still stands: do not add `SessionKiller`, `SessionSwitcher`
+or any other per-operation interface. If a future feature seems to need a third
+seam, it needs a written justification in this file first.
 
 ### 2.2 Test files (Go unit tests, stdlib `testing` only)
 
@@ -115,13 +143,13 @@ Rules:
 | Rule | Detail |
 |---|---|
 | `text.go` imports nothing from this program | pure functions + stdlib + `shellquote` |
-| `tmux.go` is the only file that imports `os/exec` | one exception: `state.go`, for the detached `delayed-switch` spawn, which needs `SysProcAttr` |
+| Only three files import `os/exec` | `tmux.go` (tmux, git, and the `bash -lc` of `sourceEnv`), `fzf.go` (fzf needs stdin, a separate stderr and the exit code — §2.1.1), and `state.go` (the detached `delayed-switch` spawn, which needs `SysProcAttr`). No other file may. |
 | `log.go` imports nothing from this program | so any file can log without a cycle |
-| Only one abstraction exists | `type runner func(argv ...string) (string, error)`, and the package-level `var run runner`. Tests set `run` to a fake. |
+| Exactly two abstractions exist | `runner` (`var run`) for tmux/git and `fzfRunner` (`var runFzfCmd`) for fzf. Tests set both to fakes. Nothing else. See §2.1.1 for why the second one is not creeping abstraction. |
 | No struct is passed around as a "context" or "app" object | package-level `appDir`, `logPath`, `selfPath` are set once in `main` |
 
-**There is no interface hierarchy and no DI.** The `runner` func type is the single seam,
-and it exists for exactly one reason: unit tests without a tmux server.
+**There is no interface hierarchy and no DI.** The two func types are the only seams,
+and they exist for exactly one reason: unit tests without a tmux server and without fzf.
 
 ---
 
@@ -221,7 +249,7 @@ Aimed at the implementer. Every item is a real mistake from the abandoned Python
 |---|---|---|
 | 1 | Do **not** add a `domain/`, `ports/`, `adapters/`, `usecases/` or `app/` directory. | One flat `package main` at the repo root. |
 | 2 | Do **not** build a DI container, a `Container` struct, or a `New*` constructor chain. | Package-level `var run runner` and three package-level path strings, set once in `main`. |
-| 3 | Do **not** define an interface for each operation (`SessionKiller`, `SessionSwitcher`, …). | One `runner` func type. That is the whole abstraction budget. |
+| 3 | Do **not** define an interface for each operation (`SessionKiller`, `SessionSwitcher`, …). | Two func types, `runner` and `fzfRunner` (§2.1.1). That is the whole abstraction budget, and it is spent. |
 | 4 | Do **not** write forwarder methods that only call another method. | Call the function directly. |
 | 5 | Do **not** create one file per function or one file per action. | 8 files. The table in §2.1 is the whole list. Adding a 9th needs a reason written in this file. |
 | 6 | Do **not** add a dependency without checking §2 of `go-libs.md` first. | It says stdlib for JSON, atomic write, log rotation, exec, detached spawn, uid, tokens, and tests. One production dependency exists on purpose. |
