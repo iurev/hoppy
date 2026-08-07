@@ -1,12 +1,10 @@
 // sessions.go — building, ordering and filtering the session list.
+// Row shape: "[1] name @ 3 windows". See SPEC §4.1 (list), §4.2 (selector
+// items), §6.3 (worktree filter), §3.10 (CAPITAL filter).
 //
-// Row shape (SPEC §4.1, §4.3): "[1] name @ 3 windows".
-// The separator is `sessionSep` from text.go. There is exactly ONE definition of
-// it in the program: the frecency lookup, the current-session pin and fzf's
+// The separator is `sessionSep` from text.go, and there is exactly ONE
+// definition of it: the frecency lookup, the current-session pin and fzf's
 // --delimiter must all agree, and a second copy is how they stop agreeing.
-//
-// SPEC §4.1 (list), §4.2 (selector items), §6.3 (worktree filter),
-// §3.10 (CAPITAL filter).
 package main
 
 import (
@@ -30,9 +28,9 @@ var hasUpperRe = regexp.MustCompile(`[A-Z]`)
 // getSessionsList returns every tmux session as one normalised row, ordered by
 // frecency score, descending (SPEC §4.1).
 //
-// D3: there is no excludeCurrent parameter and no TMUX_FZF_SWITCH_CURRENT. The
-// current session is always in the list.
-// Q4: TMUX_FZF_SESSION_FORMAT is deleted, so step 2 of §4.1 is gone.
+// D3: no excludeCurrent, no TMUX_FZF_SWITCH_CURRENT — the current session is
+// always in the list. Q4: TMUX_FZF_SESSION_FORMAT is deleted, so §4.1 step 2
+// is gone.
 func getSessionsList(current string, st frecencyState, now time.Time) ([]string, error) {
 	// Step 1: validate the current session name, but only warn (SPEC §1.1).
 	if current != "" {
@@ -41,21 +39,14 @@ func getSessionsList(current string, st frecencyState, now time.Time) ([]string,
 		}
 	}
 
-	// Steps 3 and 4: tmuxListSessions already runs parseLines on the output.
 	raw, err := tmuxListSessions()
 	if err != nil {
 		return nil, err
 	}
-
-	// Step 5.
-	lines := normalizeAtColumns(raw)
-
-	// Step 6.
-	return orderByFrecency(lines, st, now), nil
+	return orderByFrecency(normalizeAtColumns(raw), st, now), nil
 }
 
-// orderByFrecency sorts rows by their session's frecency score, highest first
-// (SPEC §4.1 step 6, §5.2).
+// orderByFrecency sorts rows by frecency score, highest first (SPEC §4.1 step 6).
 //
 // sort.SliceStable, never sort.Slice. Every score is 0 on a fresh checkout, so
 // with an unstable sort the whole list order would be arbitrary and the [1]..[9]
@@ -79,33 +70,23 @@ func orderByFrecency(lines []string, st frecencyState, now time.Time) []string {
 	return out
 }
 
-// selectorItems builds the rows fzf actually shows (SPEC §4.2).
+// selectorItems builds the rows fzf actually shows (SPEC §4.2): the current
+// session's own row first when it has one, otherwise the rows unchanged. No
+// literal "[current]" row is ever added here — that belongs to `detach` only
+// (pinCurrentRow).
 //
-//	current != "" and a row starts with "<current> @ "  -> that row first
-//	current != "" and no such row                       -> rows unchanged
-//	current == "" and includeCurrent                    -> "[current]" first
-//	current == "" and !includeCurrent                   -> rows unchanged
-//
-// Then addNumberPrefixes, then the literal "[cancel]" row AFTER numbering.
-// So "[cancel]" never takes a number, and under D3 the pinned current session
-// is always "[1]".
-func selectorItems(lines []string, current string, includeCurrent bool) []string {
-	items := make([]string, 0, len(lines)+2)
-
-	switch pinned := indexOfCurrentRow(lines, current); {
-	case pinned >= 0:
+// Numbering runs first, then the literal "[cancel]" row, so "[cancel]" never
+// takes a number and under D3 the pinned current session is always "[1]".
+func selectorItems(lines []string, current string) []string {
+	items := make([]string, 0, len(lines)+1)
+	if pinned := indexOfCurrentRow(lines, current); pinned >= 0 {
 		items = append(items, lines[pinned])
 		items = append(items, lines[:pinned]...)
 		items = append(items, lines[pinned+1:]...)
-	case current == "" && includeCurrent:
-		items = append(items, "[current]")
-		items = append(items, lines...)
-	default:
+	} else {
 		items = append(items, lines...)
 	}
-
-	items = addNumberPrefixes(items)
-	return append(items, "[cancel]")
+	return append(addNumberPrefixes(items), "[cancel]")
 }
 
 // indexOfCurrentRow returns the position of the row that belongs to the current
@@ -127,10 +108,9 @@ func indexOfCurrentRow(lines []string, current string) int {
 // pinCurrentRow puts the current session's own row first, and falls back to the
 // literal "[current]" row only when the current session has no row at all.
 //
-// This is the `detach` list of SPEC §3.14.1 (Q12 FIX, 2026-08-07). It carries no
-// number prefixes and no "[cancel]" row: actionDetach adds what it needs.
-// Adding "[current]" unconditionally would show the current session twice, once
-// as "[current]" and once as its own row.
+// This is the `detach` list of SPEC §3.14.1 (Q12 FIX). Adding "[current]"
+// unconditionally would list the current session twice, once as "[current]" and
+// once as its own row. No numbers and no "[cancel]": actionDetach adds those.
 func pinCurrentRow(lines []string, current string) []string {
 	out := make([]string, 0, len(lines)+1)
 	if i := indexOfCurrentRow(lines, current); i >= 0 {

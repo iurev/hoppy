@@ -1,13 +1,8 @@
-// Command session-zx is a tmux session switcher driven by fzf.
-// It is the Go port of session-zx.mjs. See SPEC.md and ARCHITECTURE.md.
+// Command session-zx is a tmux session switcher driven by fzf, the Go port of
+// session-zx.mjs. See SPEC.md and ARCHITECTURE.md.
 //
-// This file owns:
-//   - startup (SPEC §1): appDir, log path, .envs sourcing, env defaults
-//   - argv parsing (SPEC §1.2): os.Args only, "argument present = argument given"
-//   - the action router (SPEC §2), in the exact order the .mjs uses
-//   - one small handler function per action (SPEC §3)
-//
-// All 15 actions are implemented.
+// This file owns startup (SPEC §1), argv parsing (§1.2), the action router
+// (§2) and one handler per action (§3). All 15 actions are implemented.
 package main
 
 import (
@@ -31,27 +26,11 @@ var validActions = []string{
 	"capital-switch", "popup-capital-switch",
 }
 
-// helperActions are routed before assertValidAction. fzf --bind and the
-// detached debounce child re-invoke this binary with them (SPEC §2, §3.4-§3.6).
-var helperActions = []string{
-	"reload-sessions", "kill-single-from-line", "switch-from-line", "delayed-switch",
-}
-
 // fastHelperActions skip the two slow startup steps: sourceEnv (up to two
-// `bash -lc` LOGIN shells) and currentSession (one tmux call).
-//
-//	switch-from-line      writes the debounce file and spawns the child
-//	delayed-switch        sleeps, then switches
-//	kill-single-from-line runs one tmux kill-session
-//
-// None of them reads the current session. None of them runs fzf. And none of
-// them needs .envs sourced again: every one is a CHILD of the selector process,
-// which already sourced it, so PATH and SESSION_SWITCH_DEBOUNCE_MS are already
-// in the environment they inherit.
-//
-// This matters most for delayed-switch: the sourcing cost landed BEFORE the
-// debounce sleep, so the preview always reacted later than
-// SESSION_SWITCH_DEBOUNCE_MS asked for.
+// `bash -lc` LOGIN shells) and currentSession (one tmux call). Each of the
+// three is a CHILD of the selector, which already sourced .envs, and none
+// reads the current session. This matters most for delayed-switch: the sourcing
+// cost used to land BEFORE the debounce sleep, so the preview reacted late.
 //
 // `reload-sessions` is NOT here: it builds the session rows and needs the
 // current session to pin (SPEC §3.3, Q7).
@@ -64,15 +43,12 @@ var fastHelperActions = map[string]bool{
 // defaultFzfBin is the ensureEnvDefaults value for TMUX_FZF_BIN (SPEC §8.2).
 const defaultFzfBin = "fzf"
 
-// Package-level paths, set once in main. No app struct, no DI container
-// (ARCHITECTURE §6 rule 2).
+// Paths set once in main. No app struct, no DI container (ARCHITECTURE §6
+// rule 2). selfPath is symlink-resolved and goes into the fzf --bind commands;
+// appDir holds the log and .session-frecency/ (SPEC §0.55).
 var (
-	// selfPath is the absolute path of this binary, symlinks resolved. It goes
-	// into the fzf --bind commands and the popup command line.
 	selfPath string
-	// appDir is the directory holding the binary: <appDir>/session-zx.log and
-	// <appDir>/.session-frecency/ (SPEC §0.55).
-	appDir string
+	appDir   string
 )
 
 // envSkipKeys are the process-local variables sourceEnv must never copy, even
@@ -89,16 +65,10 @@ func main() {
 // start is the whole program. main only turns its result into an exit code, so
 // that every path here can return instead of calling os.Exit in ten places.
 func start() int {
-	// SPEC §1 step 2: the binary path and its directory.
+	// SPEC §1 steps 2-3: the binary path, its directory, and the log next to it.
 	selfPath = resolveSelf()
 	appDir = filepath.Dir(selfPath)
-
-	// SPEC §1 step 3: the log file sits next to the binary.
 	setLogPath(appDir)
-
-	// SPEC §1 steps 5-6 (SESSION_SWITCH_DEBOUNCE_MS and the debounce file path)
-	// belong to the debounce half of state.go. Q6 moves the read to AFTER
-	// sourceEnv, so nothing is needed here.
 
 	// SPEC §1 step 15. O-4: argument present = argument given, so a session
 	// named "0" works here where the .mjs treated it as missing (§1.2, M11).
@@ -113,28 +83,21 @@ func start() int {
 		prepareFifo()
 	}
 
-	// The fast path for the three fzf/debounce helper actions. See
-	// fastHelperActions: they need neither the sourced environment nor the
-	// current session, and both cost real time on every Ctrl+N keypress.
+	// The fast path for the three fzf/debounce helper actions: they need
+	// neither the sourced environment nor the current session, and both cost
+	// real time on every Ctrl+N keypress.
 	if fastHelperActions[action] {
 		logEvent("script started")
 		logEvent("action selected: " + action)
 		return route(action, arg, "")
 	}
 
-	// SPEC §1 step 8.
+	// SPEC §1 steps 8-9, 11-13. Step 14 (excludeCurrent) is DELETED (D3).
 	sourceEnv()
-	// SPEC §1 step 9.
 	ensureEnvDefaults()
-
-	// SPEC §1 step 11.
 	logEvent("script started")
-
-	// SPEC §1 steps 12-13.
 	current := currentSession()
 	logEvent("current session: " + current)
-
-	// SPEC §1 step 14 (excludeCurrent) is DELETED — decision D3.
 
 	if action == "" {
 		selected, err := actionMenu()
@@ -145,9 +108,14 @@ func start() int {
 	}
 	logEvent("action selected: " + action)
 
-	// SPEC §1 step 17.
+	// SPEC §1 step 17. An empty action means the menu was cancelled; the log
+	// line prints "(none)" so it stays readable.
 	if action == "" || action == "[cancel]" {
-		logEvent("action=" + actionLabel(action) + ": cancelled")
+		label := action
+		if label == "" {
+			label = "(none)"
+		}
+		logEvent("action=" + label + ": cancelled")
 		return 0
 	}
 
@@ -155,10 +123,10 @@ func start() int {
 }
 
 // route is SPEC §2, in the exact .mjs order. The order is the contract: the
-// three helper actions are handled BEFORE assertValidAction and are absent from
-// validActions on purpose (Q15).
+// popup wrappers, reload-sessions and the three fzf/debounce helper actions are
+// all handled BEFORE assertValidAction, so they are absent from validActions on
+// purpose (Q15). The helpers always exit 0 (SPEC §3.4-§3.6).
 func route(action, arg, current string) int {
-	// 1-3: the popup wrappers.
 	switch action {
 	case "popup-switch":
 		return actionPopup("SESSIONS", "switch")
@@ -166,11 +134,8 @@ func route(action, arg, current string) int {
 		return actionPopup("WORKTREE SESSIONS", "worktree-switch")
 	case "popup-capital-switch":
 		return actionPopup("CAPITAL SESSIONS", "capital-switch")
-	// 4: fzf's reload target.
 	case "reload-sessions":
 		return actionReloadSessions(current)
-	// 5-7: the helper actions. They are NOT in validActions and they always
-	// exit 0 (SPEC §3.4-§3.6).
 	case "kill-single-from-line":
 		return actionKillSingleFromLine(arg)
 	case "delayed-switch":
@@ -179,7 +144,7 @@ func route(action, arg, current string) int {
 		return actionSwitchFromLine(arg)
 	}
 
-	// The gate. Everything below is a validated action (SPEC §2, line 145).
+	// The gate. Everything below is a validated action (SPEC §2).
 	if err := assertValidAction(action); err != nil {
 		// err.Error() already begins with "Invalid action: ", which is exactly
 		// the shape of log message 18. Do not prefix it again.
@@ -188,13 +153,12 @@ func route(action, arg, current string) int {
 		return 1
 	}
 
-	// 8: kill-single runs BEFORE the unconditional action log (.mjs 154 vs 258).
+	// kill-single runs BEFORE the unconditional action log (.mjs 154 vs 258).
 	if action == "kill-single" {
 		return actionKillSingle(arg)
 	}
 
-	// SPEC §13.2 message 4. Unconditional for every action that reaches here
-	// (.mjs line 258, M6).
+	// SPEC §13.2 message 4, unconditional for every action below (M6).
 	logEvent("action=" + action)
 
 	switch action {
@@ -213,10 +177,7 @@ func route(action, arg, current string) int {
 	case "detach":
 		return actionDetach(current)
 	}
-
-	// Unreachable: the gate above accepts nothing else (.mjs 662-663).
-	logEvent("script complete, exiting normally")
-	return 0
+	return 0 // unreachable: the gate above accepts nothing else
 }
 
 // ---------------------------------------------------------------------------
@@ -224,9 +185,8 @@ func route(action, arg, current string) int {
 // ---------------------------------------------------------------------------
 
 // resolveSelf returns the absolute path of this binary with symlinks resolved
-// (SPEC §0.1: <appDir> is "the directory that holds the Go binary").
-// Every fallback still yields an absolute path, because <appDir> also decides
-// where the log and the frecency directory live.
+// (SPEC §0.1). Every fallback still yields an absolute path, because <appDir>
+// also decides where the log and the frecency directory live.
 func resolveSelf() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -260,12 +220,11 @@ func parseArgs() (action, arg string) {
 //
 // Two deliberate differences from the .mjs, both required:
 //
-//   - the name is validated but a failure only WARNS (SPEC §1.1, M5). tmux
-//     allows names assertValidSessionName rejects, and the name came from tmux.
-//   - a tmux failure is NOT fatal. The .mjs crashes with no tmux server
-//     (SPEC §15 row 1), but the action menu and the popup wrappers need no
-//     server at all, and tests/test_script_executes.py runs the binary with the
-//     server killed. Treat it as "no current session" and carry on (O-5).
+//   - an invalid name only WARNS (SPEC §1.1, M5). tmux allows names
+//     assertValidSessionName rejects, and this name came from tmux.
+//   - a tmux failure is NOT fatal (O-5). The .mjs crashes with no tmux server,
+//     but the action menu and the popup wrappers need no server at all, and
+//     tests/test_script_executes.py runs the binary with the server killed.
 func currentSession() string {
 	name, err := tmuxCurrentSession()
 	if err != nil {
@@ -284,11 +243,8 @@ func currentSession() string {
 // sourceEnv applies <appDir>/.envs, or the tmux-fzf plugin copy (SPEC §8.1).
 //
 // Q5 fix (SPEC §0.4): only keys that are NEW or CHANGED between a plain login
-// shell and one that sourced the file are applied. PATH is the one exception and
-// is always applied — it is what puts tmux, git and fzf on the path.
-//
-// If no candidate file exists this does nothing at all, which is today's
-// behaviour and, per SPEC §16, today's reality on this machine.
+// shell and one that sourced the file are applied. PATH is the one exception
+// and is always applied — it is what puts tmux, git and fzf on the path.
 func sourceEnv() {
 	path := findEnvsFile()
 	if path == "" {
@@ -345,8 +301,8 @@ func findEnvsFile() string {
 }
 
 // parseEnvOutput splits `env` output at the FIRST "=" on each line and skips
-// lines with no "=" (SPEC §8.1 step 3, §0.4 step 6).
-// Multi-line values stay mangled. That is bug-compatible and accepted.
+// lines with no "=" (SPEC §8.1 step 3). Multi-line values stay mangled: that is
+// bug-compatible with the .mjs and accepted.
 func parseEnvOutput(out string) map[string]string {
 	env := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
@@ -363,9 +319,8 @@ func parseEnvOutput(out string) map[string]string {
 }
 
 // ensureEnvDefaults sets TMUX_FZF_BIN when it is unset or empty (SPEC §8.2).
-// TMUX_FZF_OPTIONS and FZF_DEFAULT_OPTS need no default: os.Getenv already gives
-// "" and an empty string shell-splits into zero words.
-// The TMUX_FZF_PREVIEW_OPTIONS / KAOMOJI_PREVIEW_TEXT rows are deleted (D5).
+// TMUX_FZF_OPTIONS and FZF_DEFAULT_OPTS need no default: an empty string
+// shell-splits into zero words. The preview/kaomoji rows are deleted (D5).
 func ensureEnvDefaults() {
 	if os.Getenv("TMUX_FZF_BIN") == "" {
 		_ = os.Setenv("TMUX_FZF_BIN", defaultFzfBin)
@@ -404,11 +359,9 @@ func actionPopup(title, inner string) int {
 
 // actionReloadSessions prints the session rows for fzf's reload() (SPEC §3.3).
 //
-// Q7 FIX: the rows are IDENTICAL to the initial switch list. The current session
-// is pinned to the top and "[cancel]" is appended. The .mjs passed a null
-// current session and printed no cancel row, so the list silently changed shape
-// after the first DEL press. SPEC §3.3, §4.2 and §15 still carry the old .mjs
-// sentences, each annotated with "(Q7 FIX)".
+// Q7 FIX: the rows are IDENTICAL to the initial switch list. The .mjs passed a
+// null current session and printed no cancel row, so the list silently changed
+// shape after the first DEL press.
 func actionReloadSessions(current string) int {
 	items, code := buildSelectorRows(current, "reload-sessions")
 	if code != 0 {
@@ -440,7 +393,6 @@ func actionSwitch(current string) int {
 func actionWorktreeSwitch(current string) int {
 	currentPath, err := tmuxPaneCurrentPath()
 	if err != nil {
-		// No logEvent here: fail() already logs this error (D4 caps the log).
 		return fail("worktree-switch", err)
 	}
 
@@ -453,7 +405,6 @@ func actionWorktreeSwitch(current string) int {
 
 	panePaths, err := tmuxListPanePaths()
 	if err != nil {
-		// No logEvent here: fail() already logs this error (D4).
 		return fail("worktree-switch", err)
 	}
 
@@ -468,16 +419,7 @@ func actionWorktreeSwitch(current string) int {
 		logEvent("action=worktree-switch: cancelled")
 		return 0
 	}
-
-	header := fmt.Sprintf("Worktree sessions (%d/%d). Ctrl+N/P to preview.",
-		len(filtered), len(all))
-	selection, err := runFzf(selectorItems(filtered, current, false),
-		header, previewBindings(selfPath))
-	if err != nil {
-		return fail("worktree-switch", err)
-	}
-	// §3.9 step 9: an invalid target is logged only, never printed to stderr.
-	return switchToSelection("worktree-switch", selection, current, false)
+	return filteredSwitch("worktree-switch", "Worktree sessions", filtered, all, current)
 }
 
 // actionCapitalSwitch is SPEC §3.10.
@@ -493,68 +435,102 @@ func actionCapitalSwitch(current string) int {
 		logEvent("action=capital-switch: cancelled")
 		return 0
 	}
-
-	header := fmt.Sprintf("CAPITAL sessions (%d/%d). Ctrl+N/P to preview.",
-		len(filtered), len(all))
-	selection, err := runFzf(selectorItems(filtered, current, false),
-		header, previewBindings(selfPath))
-	if err != nil {
-		return fail("capital-switch", err)
-	}
-	return switchToSelection("capital-switch", selection, current, false)
+	return filteredSwitch("capital-switch", "CAPITAL sessions", filtered, all, current)
 }
 
 // ---------------------------------------------------------------------------
 // Shared action tails
 // ---------------------------------------------------------------------------
 
+// filteredSwitch is the tail worktree-switch and capital-switch share: show the
+// filtered list with the count in the header, then switch (SPEC §3.9, §3.10).
+// printErr is false for both — §3.9 step 9 logs an invalid target but never
+// prints it to stderr.
+func filteredSwitch(action, label string, filtered, all []string, current string) int {
+	header := fmt.Sprintf("%s (%d/%d). Ctrl+N/P to preview.", label, len(filtered), len(all))
+	selection, err := runFzf(selectorItems(filtered, current), header, previewBindings(selfPath))
+	if err != nil {
+		return fail(action, err)
+	}
+	return switchToSelection(action, selection, current, false)
+}
+
 // loadSessions reads and orders the session list, or reports the failure.
+// No logEvent on the error path: fail() already logs it (D4 caps the log).
 func loadSessions(current, action string) ([]string, int) {
 	sessions, err := getSessionsList(current, loadFrecency(appDir), time.Now())
 	if err != nil {
-		// No logEvent here: fail() already logs this error (D4).
 		return nil, fail(action, err)
 	}
 	return sessions, 0
 }
 
 // buildSelectorRows is the list + pin + numbers + "[cancel]" pipeline shared by
-// `switch` and `reload-sessions`. The two MUST agree row for row (Q7 FIX), and
-// one function is how they are kept in step.
+// switch, reload-sessions, rename and kill. They MUST agree row for row
+// (Q7 FIX), and one function is how they are kept in step.
 func buildSelectorRows(current, action string) ([]string, int) {
 	sessions, code := loadSessions(current, action)
 	if code != 0 {
 		return nil, code
 	}
-	return selectorItems(sessions, current, false), 0
+	return selectorItems(sessions, current), 0
+}
+
+// parseSelection turns fzf's output into target names (SPEC §4.5). An empty
+// result is a cancel: it is logged here and the caller returns 0.
+func parseSelection(action, selection, current string) []string {
+	targets := parseTargets(selection, current)
+	if len(targets) == 0 {
+		logEvent("action=" + action + ": cancelled")
+	}
+	return targets
+}
+
+// validateTargets checks EVERY name before the first change, so a bad name in
+// the middle of a multi-select cannot leave the job half done (SPEC §11.3).
+func validateTargets(targets []string) int {
+	for _, target := range targets {
+		if err := assertValidSessionName(target); err != nil {
+			return invalidTarget(err, true)
+		}
+	}
+	return 0
+}
+
+// invalidTarget reports a rejected session name and gives the exit code.
+// printErr follows the .mjs: `switch` prints "Error: <msg>", the two filtered
+// switches only log it (SPEC §3.9 step 9).
+func invalidTarget(err error, printErr bool) int {
+	logEvent("Invalid target session: " + err.Error())
+	if printErr {
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+	}
+	return 1
+}
+
+// tmuxFailed reports a failed tmux write. `what` is the tmux subcommand, so the
+// log line reads "<action>: tmux <what> failed: <err>" (SPEC §13.2 message 16).
+func tmuxFailed(action, what string, err error) int {
+	logEvent(action + ": tmux " + what + " failed: " + err.Error())
+	fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+	return 1
 }
 
 // switchToSelection is the common tail of switch, worktree-switch and
 // capital-switch (SPEC §3.9-§3.11): parse, validate, switch, record frecency.
-//
-// printErr follows the .mjs: `switch` prints "Error: <msg>" for an invalid
-// target, the two filtered switches only log it (§3.9 step 9).
 func switchToSelection(action, selection, current string, printErr bool) int {
-	targets := parseTargets(selection, current)
+	targets := parseSelection(action, selection, current)
 	if len(targets) == 0 {
-		logEvent("action=" + action + ": cancelled")
 		return 0
 	}
 
 	// Only targets[0] is used, even when fzf returned several rows.
 	target := targets[0]
 	if err := assertValidSessionName(target); err != nil {
-		logEvent("Invalid target session: " + err.Error())
-		if printErr {
-			fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		}
-		return 1
+		return invalidTarget(err, printErr)
 	}
-
 	if err := tmuxSwitchClient(target); err != nil {
-		logEvent(action + ": tmux switch-client failed: " + err.Error())
-		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		return 1
+		return tmuxFailed(action, "switch-client", err)
 	}
 
 	// SPEC §5.3: frecency is recorded only after a SUCCESSFUL switch-client, and
@@ -632,9 +608,7 @@ func actionKillSingle(name string) int {
 		return 1
 	}
 	if err := assertValidSessionName(name); err != nil {
-		logEvent("Invalid target session: " + err.Error())
-		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		return 1
+		return invalidTarget(err, true)
 	}
 	if !tmuxHasSession(name) {
 		_ = tmuxDisplayMessage(tmuxSessionMissingMessage(name))
@@ -684,22 +658,16 @@ func actionNew() int {
 		return 0
 	}
 	if err := assertValidSessionName(name); err != nil {
-		logEvent("Invalid target session: " + err.Error())
-		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		return 1
+		return invalidTarget(err, true)
 	}
 
 	if err := tmuxNewSessionDetached(name); err != nil {
-		logEvent("new: tmux new-session failed: " + err.Error())
-		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		return 1
+		return tmuxFailed("new", "new-session", err)
 	}
 	logEvent("action=new: created " + name)
 
 	if err := tmuxSwitchClient(name); err != nil {
-		logEvent("new: tmux switch-client failed: " + err.Error())
-		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		return 1
+		return tmuxFailed("new", "switch-client", err)
 	}
 	logEvent("action=new: switched to " + name)
 	// No frecency record for a new session (SPEC §3.8 step 6).
@@ -708,11 +676,10 @@ func actionNew() int {
 
 // actionRename is SPEC §3.12. Q8/D7: the prompt really works now.
 //
-// Q12 FIX: the .mjs called the selector WITHOUT the current session, so the
-// list held both a literal "[current]" row and the real current-session row —
-// two rows meaning the same thing. The port passes the current session and
-// pins it at the top, exactly like `switch`. So there is no "[current]" row
-// here any more.
+// Q12 FIX: the .mjs called the selector WITHOUT the current session, so the list
+// held both a literal "[current]" row and the real current-session row — two
+// rows meaning the same thing. The port pins the current session instead, so
+// there is no "[current]" row here any more.
 func actionRename(current string) int {
 	name, err := promptSessionName()
 	if err != nil {
@@ -723,9 +690,7 @@ func actionRename(current string) int {
 		return 0
 	}
 	if err := assertValidSessionName(name); err != nil {
-		logEvent("Invalid target session: " + err.Error())
-		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		return 1
+		return invalidTarget(err, true)
 	}
 
 	items, code := buildSelectorRows(current, "rename")
@@ -737,21 +702,15 @@ func actionRename(current string) int {
 		return fail("rename", err)
 	}
 
-	targets := parseTargets(selection, current)
+	targets := parseSelection("rename", selection, current)
 	if len(targets) == 0 {
-		logEvent("action=rename: cancelled")
 		return 0
 	}
 	if err := assertValidSessionName(targets[0]); err != nil {
-		logEvent("Invalid target session: " + err.Error())
-		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		return 1
+		return invalidTarget(err, true)
 	}
-
 	if err := tmuxRenameSession(targets[0], name); err != nil {
-		logEvent("rename: tmux rename-session failed: " + err.Error())
-		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		return 1
+		return tmuxFailed("rename", "rename-session", err)
 	}
 	logEvent("action=rename: renamed " + targets[0] + " to " + name)
 	return 0
@@ -771,19 +730,12 @@ func actionKill(current string) int {
 		return fail("kill", err)
 	}
 
-	targets := parseTargets(selection, current)
+	targets := parseSelection("kill", selection, current)
 	if len(targets) == 0 {
-		logEvent("action=kill: cancelled")
 		return 0
 	}
-	// Every target is validated BEFORE the first kill, so a bad name in the
-	// middle of a multi-select cannot leave the job half done.
-	for _, target := range targets {
-		if err := assertValidSessionName(target); err != nil {
-			logEvent("Invalid target session: " + err.Error())
-			fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-			return 1
-		}
+	if code := validateTargets(targets); code != 0 {
+		return code
 	}
 
 	for _, target := range reverseSorted(targets) {
@@ -796,18 +748,16 @@ func actionKill(current string) int {
 	return 0
 }
 
-// actionDetach is SPEC §3.14 with the Q3 fix.
+// actionDetach is SPEC §3.14 with two fixes.
 //
 // Q3: the .mjs compared raw `tmux list-sessions` lines against formatted names,
 // so the filter matched nothing and only the "[current]" row was ever usable.
-// tmuxAttachedSessionNames asks tmux for #{session_attached} instead, so real
-// attached sessions now appear.
+// tmuxAttachedSessionNames asks tmux for #{session_attached} instead.
 //
-// Q12 FIX (2026-08-07), SPEC §3.14.1: the literal "[current]" row is added ONLY
-// when the current session has no row of its own. Since the Q3 fix the current
-// session IS attached, so it always has a real row, and the old unconditional
-// "[current]" listed the same session twice. dedupe cannot merge the two: they
-// are different strings. This is the rule selectorItems already uses.
+// Q12 FIX (SPEC §3.14.1): pinCurrentRow adds the literal "[current]" row ONLY
+// when the current session has no row of its own. Since the Q3 fix it always
+// has one, and the old unconditional "[current]" listed it twice — dedupe
+// cannot merge those two, because they are different strings.
 func actionDetach(current string) int {
 	sessions, code := loadSessions(current, "detach")
 	if code != 0 {
@@ -836,17 +786,12 @@ func actionDetach(current string) int {
 		return fail("detach", err)
 	}
 
-	targets := parseTargets(selection, current)
+	targets := parseSelection("detach", selection, current)
 	if len(targets) == 0 {
-		logEvent("action=detach: cancelled")
 		return 0
 	}
-	for _, target := range targets {
-		if err := assertValidSessionName(target); err != nil {
-			logEvent("Invalid target session: " + err.Error())
-			fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-			return 1
-		}
+	if code := validateTargets(targets); code != 0 {
+		return code
 	}
 
 	// Selection order, not sorted: detach has no ordering quirk to preserve.
@@ -886,17 +831,18 @@ const (
 
 // readConfirmKey reads exactly one byte from a terminal stdin.
 //
-// M9: when stdin is NOT a terminal the .mjs fails at once, because
-// setRawMode throws. The TCGETS ioctl below fails in exactly the same cases —
-// a pipe, a regular file, /dev/null — so we return the error immediately and
-// never wait 30 s.
+// M9: when stdin is NOT a terminal the .mjs fails at once, because setRawMode
+// throws. enterRawMode's TCGETS ioctl fails in exactly the same cases — a pipe,
+// a regular file, /dev/null — so we return the error immediately and never wait
+// 30 s. Note that /dev/null IS a character device, so an os.Stat mode check
+// would not do; only the ioctl tells a real terminal apart.
 func readConfirmKey(timeout time.Duration) (byte, error) {
 	fd := os.Stdin.Fd()
 	previous, err := enterRawMode(fd)
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = setTermios(fd, previous) }()
+	defer func() { _ = ioctlTermios(fd, syscall.TCSETS, previous) }()
 
 	type result struct {
 		key byte
@@ -906,15 +852,14 @@ func readConfirmKey(timeout time.Duration) (byte, error) {
 	go func() {
 		var buf [1]byte
 		n, err := os.Stdin.Read(buf[:])
-		if err != nil {
+		switch {
+		case err != nil:
 			done <- result{0, err}
-			return
-		}
-		if n == 0 {
+		case n == 0:
 			done <- result{0, errors.New("no input")}
-			return
+		default:
+			done <- result{buf[0], nil}
 		}
-		done <- result{buf[0], nil}
 	}()
 
 	select {
@@ -927,33 +872,21 @@ func readConfirmKey(timeout time.Duration) (byte, error) {
 
 // enterRawMode turns off echo and line buffering and returns the old settings.
 // It uses the raw ioctls on purpose: golang.org/x/term would be a second
-// production dependency for one legacy action nobody tests.
+// production dependency for one legacy action.
 func enterRawMode(fd uintptr) (*syscall.Termios, error) {
-	previous, err := getTermios(fd)
-	if err != nil {
+	var previous syscall.Termios
+	if err := ioctlTermios(fd, syscall.TCGETS, &previous); err != nil {
 		return nil, err
 	}
-	raw := *previous
+	raw := previous
 	raw.Lflag &^= syscall.ECHO | syscall.ICANON | syscall.ISIG | syscall.IEXTEN
 	raw.Iflag &^= syscall.IXON | syscall.ICRNL | syscall.BRKINT | syscall.INPCK | syscall.ISTRIP
 	raw.Cc[syscall.VMIN] = 1
 	raw.Cc[syscall.VTIME] = 0
-	if err := setTermios(fd, &raw); err != nil {
+	if err := ioctlTermios(fd, syscall.TCSETS, &raw); err != nil {
 		return nil, err
 	}
-	return previous, nil
-}
-
-func getTermios(fd uintptr) (*syscall.Termios, error) {
-	var t syscall.Termios
-	if err := ioctlTermios(fd, syscall.TCGETS, &t); err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
-func setTermios(fd uintptr, t *syscall.Termios) error {
-	return ioctlTermios(fd, syscall.TCSETS, t)
+	return &previous, nil
 }
 
 func ioctlTermios(fd, request uintptr, t *syscall.Termios) error {
@@ -982,10 +915,9 @@ func fail(action string, err error) int {
 // promptFailed reports a BROKEN session-name prompt (Q8, decision D7).
 //
 // Every FIFO failure used to end as "cancelled" plus exit 0, so `new` and
-// `rename` did nothing and said nothing. That silence is the exact Q8 symptom
-// D7 told us to remove. A REAL cancel — the user typed an empty name, or the
-// prompt pane was closed — still returns "" with no error, stays silent and
-// exits 0.
+// `rename` did nothing and said nothing — the exact Q8 symptom. A REAL cancel
+// (empty name, or the prompt pane was closed) still returns "" with no error,
+// stays silent and exits 0.
 //
 // The message goes to stderr AND to tmux: `new` and `rename` usually run inside
 // a popup, and the popup closes before anyone can read stderr.
@@ -993,12 +925,4 @@ func promptFailed(action string, err error) int {
 	msg := "Session name prompt failed: " + oneLine(err.Error())
 	_ = tmuxDisplayMessage(msg)
 	return fail(action, errors.New(msg))
-}
-
-// actionLabel keeps the cancel log line readable when no action was chosen.
-func actionLabel(action string) string {
-	if action == "" {
-		return "(none)"
-	}
-	return action
 }

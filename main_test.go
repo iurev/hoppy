@@ -16,6 +16,45 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// readConfirmKey — SPEC M9: a non-TTY stdin must fail AT ONCE
+// ---------------------------------------------------------------------------
+
+// A pipe and /dev/null are the two cases the tests and CI really hit. Both must
+// return an error long before the 30 s kill-single timeout. /dev/null is a
+// character device, so this also pins that a plain os.Stat check is not enough.
+func TestReadConfirmKeyFailsFastWithoutATTY(t *testing.T) {
+	pipeR, pipeW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pipeR.Close(); _ = pipeW.Close() }()
+
+	devNull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = devNull.Close() }()
+
+	realStdin := os.Stdin
+	defer func() { os.Stdin = realStdin }()
+
+	for name, f := range map[string]*os.File{"a pipe": pipeR, "/dev/null": devNull} {
+		t.Run(name, func(t *testing.T) {
+			os.Stdin = f
+			start := time.Now()
+			// The timeout is generous on purpose: if the ioctl guard were gone,
+			// the read would block and this would take the full second.
+			if _, err := readConfirmKey(time.Second); err == nil {
+				t.Fatal("a non-TTY stdin must not be accepted")
+			}
+			if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+				t.Errorf("took %v; M9 requires an immediate failure", elapsed)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // kill order — quirk Q14, marked KEEP (SPEC §3.13 step 4)
 // ---------------------------------------------------------------------------
 

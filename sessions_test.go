@@ -100,7 +100,7 @@ func TestSelectorItemsPinsTheCurrentSession(t *testing.T) {
 		"work @ 3 windows",
 		"beta @ 2 windows",
 	}
-	got := selectorItems(lines, "work", false)
+	got := selectorItems(lines, "work")
 	want := []string{
 		"[1] work @ 3 windows",
 		"[2] alpha @ 1 windows",
@@ -115,7 +115,7 @@ func TestSelectorItemsPinsTheCurrentSession(t *testing.T) {
 // D3: the current session STAYS in the list and is always [1].
 func TestSelectorItemsKeepsTheCurrentSessionD3(t *testing.T) {
 	lines := []string{"work @ 3 windows", "other @ 1 windows"}
-	got := selectorItems(lines, "work", false)
+	got := selectorItems(lines, "work")
 	if got[0] != "[1] work @ 3 windows" {
 		t.Errorf("current session must stay pinned at [1], got %q", got[0])
 	}
@@ -128,35 +128,25 @@ func TestSelectorItemsKeepsTheCurrentSessionD3(t *testing.T) {
 // with the current name must not be pinned by accident.
 func TestSelectorItemsPinNeedsTheFullPrefix(t *testing.T) {
 	lines := []string{"workspace @ 1 windows", "work @ 3 windows"}
-	got := selectorItems(lines, "work", false)
+	got := selectorItems(lines, "work")
 	if got[0] != "[1] work @ 3 windows" {
 		t.Errorf("pinned the wrong row: %q", got[0])
 	}
 }
 
+// SPEC §4.2 row 2: no "[current]" row is ever added here.
 func TestSelectorItemsNoMatchingCurrentRow(t *testing.T) {
 	lines := []string{"a @ 1 windows", "b @ 2 windows"}
-	// SPEC §4.2 row 2: no "[current]" row is added even with includeCurrent.
-	got := selectorItems(lines, "gone", true)
+	got := selectorItems(lines, "gone")
 	want := []string{"[1] a @ 1 windows", "[2] b @ 2 windows", "[cancel]"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %#v, want %#v", got, want)
 	}
 }
 
-func TestSelectorItemsLiteralCurrentRow(t *testing.T) {
+func TestSelectorItemsWithoutACurrentSession(t *testing.T) {
 	lines := []string{"a @ 1 windows"}
-	got := selectorItems(lines, "", true)
-	// "[current]" starts with "[", so it takes no number (§4.3, M12).
-	want := []string{"[current]", "[1] a @ 1 windows", "[cancel]"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %#v, want %#v", got, want)
-	}
-}
-
-func TestSelectorItemsWithoutCurrentOrIncludeCurrent(t *testing.T) {
-	lines := []string{"a @ 1 windows"}
-	got := selectorItems(lines, "", false)
+	got := selectorItems(lines, "")
 	want := []string{"[1] a @ 1 windows", "[cancel]"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %#v, want %#v", got, want)
@@ -164,7 +154,7 @@ func TestSelectorItemsWithoutCurrentOrIncludeCurrent(t *testing.T) {
 }
 
 func TestSelectorItemsOnAnEmptyList(t *testing.T) {
-	got := selectorItems([]string{}, "work", false)
+	got := selectorItems([]string{}, "work")
 	want := []string{"[cancel]"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %#v, want %#v", got, want)
@@ -175,8 +165,8 @@ func TestSelectorItemsOnAnEmptyList(t *testing.T) {
 // rows. Both go through selectorItems, so this pins the contract.
 func TestSelectorItemsIsTheSharedShapeForReload(t *testing.T) {
 	lines := []string{"b @ 1 windows", "work @ 2 windows"}
-	initial := selectorItems(lines, "work", false)
-	reload := selectorItems(lines, "work", false)
+	initial := selectorItems(lines, "work")
+	reload := selectorItems(lines, "work")
 	if !reflect.DeepEqual(initial, reload) {
 		t.Errorf("switch and reload disagree:\n %#v\n %#v", initial, reload)
 	}
@@ -185,6 +175,30 @@ func TestSelectorItemsIsTheSharedShapeForReload(t *testing.T) {
 	}
 	if initial[0] != "[1] work @ 2 windows" {
 		t.Error("the reloaded list must still pin the current session (Q7 FIX)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// pinCurrentRow — the `detach` list (SPEC §3.14.1, Q12 FIX)
+// ---------------------------------------------------------------------------
+
+func TestPinCurrentRowPrefersTheRealRow(t *testing.T) {
+	lines := []string{"a @ 1 windows", "work @ 3 windows"}
+	got := pinCurrentRow(lines, "work")
+	want := []string{"work @ 3 windows", "a @ 1 windows"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %#v, want %#v", got, want)
+	}
+}
+
+// Only when the current session has no row of its own does the literal
+// "[current]" row appear. It carries no number and no "[cancel]".
+func TestPinCurrentRowFallsBackToTheLiteralRow(t *testing.T) {
+	lines := []string{"a @ 1 windows"}
+	got := pinCurrentRow(lines, "gone")
+	want := []string{"[current]", "a @ 1 windows"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %#v, want %#v", got, want)
 	}
 }
 

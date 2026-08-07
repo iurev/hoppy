@@ -1,10 +1,7 @@
-// log.go — the append-only event log and its in-place rotation.
-//
-// SPEC §13, §13.2 (the ~20 events we keep) and §13.3 (the wipe bug we fix).
+// log.go — the append-only event log and its in-place rotation (SPEC §13).
 //
 // Line format, byte-identical to the .mjs:
 //
-//	<ISO-8601 UTC, milliseconds, Z> <space> <message> \n
 //	2026-07-20T11:06:44.123Z action=switch: complete
 //
 // Failure policy: swallow every error. Logging must never change the outcome
@@ -30,11 +27,10 @@ const (
 	logTimeLayout = "2006-01-02T15:04:05.000Z"
 )
 
-// logPath is the full path of the log file. main sets it once with setLogPath.
+// logPath is <appDir>/session-zx.log (SPEC §0.55), set once by main.
 // While it is empty, logging is a no-op — that keeps unit tests silent.
 var logPath string
 
-// setLogPath points the logger at <appDir>/session-zx.log (SPEC §0.55).
 func setLogPath(appDir string) {
 	logPath = filepath.Join(appDir, logFileName)
 }
@@ -56,18 +52,14 @@ func logEvent(msg string) {
 	_ = f.Close()
 }
 
-// rotate trims the log in place when it is over logMaxBytes.
-// There is no .log.1 backup file: the newest lines are kept, older ones go.
+// rotate trims the log in place when it is over logMaxBytes. There is no
+// .log.1 backup file: the newest lines are kept, older ones go.
 //
 // ACCEPTED RACE — not fixed, on purpose. Rotation is read + writeAtomic +
-// rename. If a second session-zx process holds an O_APPEND fd on the old inode
-// at that moment, its next write lands in the unlinked file and is lost, and a
-// line written between our ReadFile and our rename is lost too. Several
-// processes really do run at once: fzf's --bind calls re-invoke this binary
-// while the parent is still alive. We accept it because the log is a debugging
-// aid, the failure policy is "swallow everything" (SPEC §13), and the fix
-// (flock, or an append-only rotation daemon) costs more than a missing line.
-// Nothing in the program reads the log back.
+// rename, and several session-zx processes really do run at once (fzf's --bind
+// calls re-invoke this binary). A concurrent O_APPEND write can land in the
+// unlinked inode and be lost. We accept it: the log is a debugging aid, nothing
+// reads it back, and the fix (flock) costs more than a missing line.
 func rotate(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -83,10 +75,9 @@ func rotate(path string) error {
 		return err
 	}
 
-	content := string(raw)
 	// A well-formed log ends with "\n". Splitting would then give a trailing
 	// empty element, which is not a real line.
-	content = strings.TrimSuffix(content, "\n")
+	content := strings.TrimSuffix(string(raw), "\n")
 	lines := []string{}
 	if content != "" {
 		lines = strings.Split(content, "\n")
@@ -103,9 +94,8 @@ func rotate(path string) error {
 // trimLines keeps the newest lines that fit in target bytes, counting one byte
 // for each line's newline. Input and output are newest-last.
 //
-// This is the M10 fix (SPEC §13.3). The .mjs walks backwards and, when the
-// newest line alone is bigger than the target, breaks with an index past every
-// line — so the whole log is erased. Three rules replace that:
+// This is the M10 fix (SPEC §13.3): the .mjs erased the WHOLE log when the
+// newest line alone was bigger than the target. Three rules replace that:
 //
 //  1. never return an empty result while at least one line exists
 //  2. if the newest line alone is over target, keep exactly that one line
@@ -142,6 +132,8 @@ func trimLines(lines []string, target, max int) []string {
 }
 
 // truncateBytes cuts s down to at most n bytes without splitting a rune.
+// The loop backs up over every continuation byte; utf8.DecodeLastRuneInString
+// would only drop one of them and leave the rest of a broken 3- or 4-byte rune.
 func truncateBytes(s string, n int) string {
 	if n <= 0 {
 		return ""
@@ -156,13 +148,12 @@ func truncateBytes(s string, n int) string {
 }
 
 // writeAtomic writes data to path through a temp file in the same directory.
+// It is shared by frecency (§0.3), debounce (§7.1) and log rotation (§13.3);
+// do not write a second copy in state.go.
 //
 // Sync() before rename is not optional (SPEC §0.3): without it a power loss can
-// leave the renamed file full of zeros. The extra directory fsync is skipped on
+// leave the renamed file full of zeros. The directory fsync is skipped on
 // purpose.
-//
-// Shared helper: SPEC §0.3 (frecency), §7.1 (debounce) and §13.3 (log rotation)
-// all use this one function. Do not write a second copy in state.go.
 func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp*")

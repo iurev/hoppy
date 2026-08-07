@@ -1,13 +1,9 @@
-// state.go — the two JSON state files, plus the atomic write both share.
-//
-//  1. Frecency : <appDir>/.session-frecency/sessions.json  (SPEC §0.3, §5)
-//  2. Debounce : /tmp/tmux-session-<uid>.json              (SPEC §7.1)
-//
-// Both files follow the same rule: a missing, unreadable or broken file is
-// treated as empty state. Never crash.
+// state.go — the two JSON state files: frecency (SPEC §0.3, §5) and the
+// Ctrl+N/P debounce record (SPEC §7). Both follow one rule: a missing,
+// unreadable or broken file is treated as empty state. Never crash.
 //
 // writeAtomic lives in log.go and is shared by all three state files.
-// Do NOT define a second one here (SPEC §0.3, §7.1, §13.3).
+// Do NOT define a second one here.
 package main
 
 import (
@@ -62,16 +58,14 @@ func (s frecencyState) selectedAt(name string) []int64 {
 }
 
 // frecencyPath is <appDir>/.session-frecency/sessions.json (SPEC §0.3, §0.55).
-// tests/conftest.py:37 deletes exactly this directory between tests, so appDir
+// tests/conftest.py deletes exactly this directory between tests, so appDir
 // must stay the directory holding the binary.
 func frecencyPath(appDir string) string {
 	return filepath.Join(appDir, frecencyDirName, frecencyFileName)
 }
 
-// loadFrecency reads the state file. A missing directory, a missing file, an
-// unreadable file, broken JSON or a wrong version all give empty state — every
-// score is then 0 and tmux's own order survives. It never returns an error and
-// it never crashes (SPEC §0.3).
+// loadFrecency reads the state file. Any failure gives empty state — every
+// score is then 0 and tmux's own order survives (SPEC §0.3).
 func loadFrecency(appDir string) frecencyState {
 	empty := frecencyState{Version: frecencyVersion, Sessions: map[string]frecencySession{}}
 
@@ -90,7 +84,6 @@ func loadFrecency(appDir string) frecencyState {
 }
 
 // saveFrecency writes the state file atomically (SPEC §0.3).
-// The directory is created with mode 0700 and the file with 0600.
 func saveFrecency(appDir string, st frecencyState) error {
 	path := frecencyPath(appDir)
 	if err := os.MkdirAll(filepath.Dir(path), frecencyDirMode); err != nil {
@@ -106,10 +99,6 @@ func saveFrecency(appDir string, st frecencyState) error {
 // recordSelection appends one timestamp for name and saves (SPEC §0.3, §5.3).
 // Only the newest `frecencyCap` timestamps are kept, oldest first.
 //
-// Called ONLY after a successful `tmux switch-client`, and only from `switch`,
-// `worktree-switch` and `capital-switch`. Never for new/rename/kill/detach or
-// the Ctrl+N/P preview.
-//
 // A write failure is logged and swallowed: losing frecency history must never
 // turn a successful switch into a failed command.
 func recordSelection(appDir, name string, now time.Time) {
@@ -124,8 +113,8 @@ func recordSelection(appDir, name string, now time.Time) {
 	rec := st.Sessions[name]
 	rec.SelectedAt = append(rec.SelectedAt, now.UnixMilli())
 	if n := len(rec.SelectedAt); n > frecencyCap {
-		// Drop the oldest. Copy into a fresh slice so the trimmed entries
-		// cannot be reached through the old backing array.
+		// Drop the oldest into a fresh slice, so the trimmed entries cannot be
+		// reached through the old backing array.
 		trimmed := make([]int64, frecencyCap)
 		copy(trimmed, rec.SelectedAt[n-frecencyCap:])
 		rec.SelectedAt = trimmed
@@ -139,14 +128,8 @@ func recordSelection(appDir, name string, now time.Time) {
 
 // score sums the frecency buckets of SPEC §5.2.
 //
-//	age < 1 hour     -> 100
-//	age < 24 hours   -> 50
-//	age < 168 hours  -> 10
-//	otherwise        -> 1
-//
-// The boundaries are exclusive `<`, so exactly one hour old scores 50.
-// A timestamp in the future gives a negative age and lands in the first bucket,
-// scoring 100. Both are the .mjs behaviour and both are kept.
+// The boundaries are exclusive `<`, so exactly one hour old scores 50, and a
+// future timestamp has a negative age and scores 100. Both are .mjs behaviour.
 func score(selectedAt []int64, now time.Time) int {
 	nowMS := now.UnixMilli()
 	total := 0
@@ -167,11 +150,7 @@ func score(selectedAt []int64, now time.Time) int {
 }
 
 // ---------------------------------------------------------------------------
-// Debounce / delayed switch (SPEC §7)
-// ---------------------------------------------------------------------------
-//
-// This is the Ctrl+N / Ctrl+P session preview. Decision D5 drops the kaomoji
-// pane and nothing else (SPEC §0.2), so all of §7 is kept.
+// Debounce / delayed switch (SPEC §7) — the Ctrl+N / Ctrl+P session preview.
 //
 // One keypress runs two processes:
 //
@@ -180,23 +159,20 @@ func score(selectedAt []int64, now time.Time) int {
 //
 // The grandchild sleeps, re-reads the state file, and switches only if its
 // token is still the newest one. That is the whole "last target wins" rule.
+// ---------------------------------------------------------------------------
 
 const debounceFileMode = 0o600
 
-// debouncePath is /tmp/tmux-session-<id>.json (SPEC §7.1).
+// debouncePath is /tmp/tmux-session-<uid>.json (SPEC §7.1).
 func debouncePath() string {
 	return filepath.Join(os.TempDir(), "tmux-session-"+debounceID()+".json")
 }
 
-// debounceID is the uid, else $USER, else "pid-<pid>" (SPEC §7.1).
+// debounceID is the uid. SPEC §7.1 also lists $USER and "pid-<pid>" fallbacks,
+// but os.Getuid() only fails on Windows and this program is Linux-only, so both
+// branches were dead code.
 func debounceID() string {
-	if uid := os.Getuid(); uid >= 0 {
-		return strconv.Itoa(uid)
-	}
-	if user := os.Getenv("USER"); user != "" {
-		return user
-	}
-	return "pid-" + strconv.Itoa(os.Getpid())
+	return strconv.Itoa(os.Getuid())
 }
 
 // debounceDelay is SESSION_SWITCH_DEBOUNCE_MS, default 300 ms (SPEC §7.3 step 2).
@@ -272,20 +248,14 @@ func newToken(now time.Time, pid int) string {
 	return fmt.Sprintf("%d-%d-%s", now.UnixMilli(), pid, randomSuffix())
 }
 
-// randomSuffix returns 8 base-36 characters.
+// randomSuffix returns 8 base-36 characters. 5 bytes is 2^40, and 36^8 is
+// larger, so the value always fits in 8 digits. crypto/rand.Read never fails.
 func randomSuffix() string {
 	var b [5]byte
-	if _, err := crand.Read(b[:]); err != nil {
-		// The timestamp and the pid already separate two tokens, so a weaker
-		// suffix is acceptable and much better than failing the keypress.
-		return fmt.Sprintf("%08x", uint32(time.Now().UnixNano()))
-	}
+	_, _ = crand.Read(b[:])
 	n := uint64(b[0])<<32 | uint64(b[1])<<24 | uint64(b[2])<<16 | uint64(b[3])<<8 | uint64(b[4])
 	s := strconv.FormatUint(n, 36)
-	for len(s) < 8 {
-		s = "0" + s
-	}
-	return s
+	return strings.Repeat("0", 8-len(s)) + s
 }
 
 // scheduleSessionSwitch records the target and starts the delayed switch
@@ -328,11 +298,10 @@ func scheduleSessionSwitch(target string) {
 }
 
 // spawnDelayedSwitch starts the detached grandchild (SPEC §7.2 step 7).
-//
-// Three details, and each one breaks a test if it is wrong:
+// Each of the three details below breaks a test if it is wrong:
 //
 //	nil std fds   -> Go maps them to /dev/null. Inheriting the pty means
-//	                 pexpect never sees EOF (test_script_executes.py:32).
+//	                 pexpect never sees EOF (test_script_executes.py).
 //	Setsid: true  -> closing the popup must not kill the child before it fires.
 //	Release()     -> we exit immediately; we never Wait.
 func spawnDelayedSwitch(token string) error {
@@ -395,11 +364,9 @@ func handleDelayedSwitch(token string) {
 }
 
 // shouldDelayedSwitch is the whole "last target wins" rule, kept pure so it can
-// be table-tested (SPEC §7.3 step 4).
-//
-// Switch only when the state still names a target AND the token in the file is
-// still ours. A newer keypress overwrote the token, so an older grandchild must
-// stay quiet.
+// be table-tested (SPEC §7.3 step 4): switch only when the state still names a
+// target AND the token in the file is still ours. A newer keypress overwrites
+// the token, so an older grandchild stays quiet.
 func shouldDelayedSwitch(st debounceState, token string) bool {
 	if token == "" {
 		return false
@@ -410,8 +377,8 @@ func shouldDelayedSwitch(st debounceState, token string) bool {
 	return st.Token == token
 }
 
-// orNull prints an empty token the way the .mjs printed a JSON null, so log
-// message 13 keeps its exact wording (SPEC §13.2).
+// orNull and orNone print empty fields the way the .mjs printed a JSON null, so
+// log message 13 keeps its exact wording (SPEC §13.2).
 func orNull(s string) string {
 	if s == "" {
 		return "null"
@@ -419,7 +386,6 @@ func orNull(s string) string {
 	return s
 }
 
-// orNone is the same idea for the target field of log message 13.
 func orNone(s string) string {
 	if s == "" {
 		return "(none)"

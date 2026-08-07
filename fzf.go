@@ -1,21 +1,9 @@
 // fzf.go — building the fzf argv and running it (SPEC §10, §12).
 //
-// No shell. No heredoc. No eval. Items go to fzf's stdin, the selection comes
-// back on stdout (SPEC §0.5, Q16).
-//
-// argv shape (SPEC §10.2.1):
-//
-//	<words of TMUX_FZF_BIN> <words of TMUX_FZF_OPTIONS>
-//	--no-sort --delimiter " @ " --with-nth=1.. --nth=1
-//	--with-shell "sh -c"
-//	[--header <text>] [--bind <binding> ...]
-//
-// Every quote in SPEC §10.2 is a SHELL quote. There are none here: `--delimiter`
-// and its value are two argv elements and the value is the three characters
-// space, "@", space (SPEC §0.9.2).
-//
-// FZF_DEFAULT_OPTS is left untouched in the child env; fzf reads it itself and
-// our argv wins on conflict.
+// No shell, no heredoc, no eval: items go to fzf's stdin, the selection comes
+// back on stdout. Every quote in SPEC §10.2 is a SHELL quote, so none of them
+// appear here — `--delimiter` and its value are two plain argv elements
+// (SPEC §0.9.2).
 package main
 
 import (
@@ -30,9 +18,6 @@ import (
 
 // Header texts. Keep them byte-identical: tests capture the pane and grep them
 // (SPEC §10.4, test-contract §4.2).
-//
-// "Ctrl+N/P to preview." stays. Decision D5 drops the kaomoji PANE, not the
-// Ctrl+N/P session preview (SPEC §0.2).
 const (
 	headerAction  = "Select an action."
 	headerSwitch  = "Select target session. Press 1-9 for quick switch. DEL to kill. Ctrl+N/P to preview."
@@ -40,22 +25,12 @@ const (
 	headerTargets = "Select target session(s). Press TAB to mark multiple items."
 )
 
-// fzfMinVersion is the documented floor. 0.51.0 is the first release with
-// --with-shell, which is what makes our POSIX quoting of --bind provably right.
-const fzfMinVersion = "0.51.0"
-
-// withShellValue is the value of --with-shell, and it MUST carry the flag.
+// withShellValue is the value of --with-shell, and it MUST carry the "-c" flag.
 //
-// fzf's man page: "--with-shell=STR — Shell command and flags to start child
-// processes with, e.g. --with-shell 'ruby -e'". So fzf runs
-// `<STR split into words> <command>`, NOT `<STR> -c <command>`.
-//
-// SPEC §0.5 and ARCHITECTURE R2 both say `--with-shell sh`. That is WRONG and
-// it was verified against fzf 0.60.3: with a bare `sh`, fzf runs
-// `sh <command>`, sh treats the command text as a FILE NAME, and EVERY --bind
-// command silently fails. The del/reload binding and both Ctrl+N/P bindings
-// then do nothing at all — with no error anywhere, because execute-silent
-// hides the output.
+// fzf runs `<STR split into words> <command>`, NOT `<STR> -c <command>`. With a
+// bare `sh` (as SPEC §0.5 and ARCHITECTURE R2 say) sh reads the command text as
+// a FILE NAME and EVERY --bind command silently fails — verified against fzf
+// 0.60.3. execute-silent hides the output, so nothing reports the breakage.
 //
 // It is one argv element: "sh" space "-c". Never two.
 const withShellValue = "sh -c"
@@ -68,23 +43,9 @@ const (
 	fzfExitInterrupt = 130
 )
 
-// ---------------------------------------------------------------------------
-// The SECOND seam (design decision, approved)
-// ---------------------------------------------------------------------------
-//
-// tmux.go's `runner` — func(argv ...string) (string, error) — is the seam for
-// tmux and git, and it stays exactly as it is. It cannot carry fzf.
-//
-// fzf needs four things that `runner` has no room for:
-//
-//  1. items written to the child's STDIN
-//  2. the selection read from the child's STDOUT
-//  3. the child's STDERR, kept separate, for log message 17
-//  4. the EXIT CODE as a value, because 0, 1 and 130 are all normal and only
-//     other codes are errors (SPEC §12)
-//
-// Folding those into `runner` would mean encoding the code into an error string
-// and parsing it back. So there is one more seam, and only one more.
+// fzfRunner is the SECOND and LAST seam. tmux.go's `runner` cannot carry fzf:
+// fzf needs stdin, a separate stdout and stderr, and the exit CODE as a value,
+// because 0, 1 and 130 are all normal (SPEC §12).
 //
 // THE ABSTRACTION BUDGET IS NOW SPENT: two function types, zero interfaces. Do
 // not add a third. See ARCHITECTURE.md §2.1 and §6 rule 3.
@@ -99,12 +60,9 @@ var runFzfCmd fzfRunner = execFzf
 // capturing them does not hide the interface — and NOT capturing stdout would
 // dump the selected row into the user's terminal.
 //
-// The returned error is non-nil only for a genuine failure to run (binary not
-// found, permission denied). A non-zero exit is reported through `code`.
+// The returned error is non-nil only for a genuine failure to run. A non-zero
+// exit is reported through `code`.
 func execFzf(argv []string, stdin string) (string, string, int, error) {
-	if len(argv) == 0 {
-		return "", "", -1, errors.New("TMUX_FZF_RUN command is empty.")
-	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, errOut bytes.Buffer
@@ -123,10 +81,6 @@ func execFzf(argv []string, stdin string) (string, string, int, error) {
 	return out.String(), errOut.String(), fzfExitOk, nil
 }
 
-// ---------------------------------------------------------------------------
-// argv
-// ---------------------------------------------------------------------------
-
 // buildFzfArgv builds the whole fzf command line (SPEC §10.2.1).
 //
 // TMUX_FZF_BIN and TMUX_FZF_OPTIONS are raw SHELL strings and are split with the
@@ -135,10 +89,6 @@ func buildFzfArgv(header string, bindings []string) ([]string, error) {
 	bin := os.Getenv("TMUX_FZF_BIN")
 	if bin == "" {
 		bin = defaultFzfBin
-	}
-	// The two validations of SPEC §10.3 that survive the port.
-	if err := assertNonEmptyString(bin, "TMUX_FZF_BIN"); err != nil {
-		return nil, err
 	}
 	if err := assertMaxLength(bin, "TMUX_FZF_BIN", 1000); err != nil {
 		return nil, err
@@ -166,8 +116,7 @@ func buildFzfArgv(header string, bindings []string) ([]string, error) {
 		return nil, errors.New("TMUX_FZF_RUN command is empty.")
 	}
 
-	// Our own options. No quotes anywhere: these are argv elements, not shell
-	// text (SPEC §0.9.2, §10.2.1).
+	// No quotes anywhere: these are argv elements, not shell text (SPEC §0.9.2).
 	argv = append(argv,
 		"--no-sort",
 		"--delimiter", sessionSep,
@@ -197,9 +146,6 @@ func buildFzfArgv(header string, bindings []string) ([]string, error) {
 // real error — usually a malformed TMUX_FZF_OPTIONS.
 func runFzf(items []string, header string, bindings []string) (string, error) {
 	if err := assertValidItemsArray(items, "fzf items"); err != nil {
-		return "", err
-	}
-	if err := assertValidHeader(header); err != nil {
 		return "", err
 	}
 
@@ -232,10 +178,6 @@ func oneLine(s string) string {
 	return s
 }
 
-// ---------------------------------------------------------------------------
-// Bindings (SPEC §3.9, §3.10, §3.11, Q17)
-// ---------------------------------------------------------------------------
-
 // switchBindings are the four `--bind` values of the `switch` list, in the .mjs
 // order: DEL, ctrl-n, ctrl-p, then the digits (SPEC §3.11).
 func switchBindings(self string) []string {
@@ -267,9 +209,9 @@ func bindCommand(self, action string) string {
 	return joinShellWords(self, action)
 }
 
-// numberBindings is the 1..9 quick-switch binding (SPEC §3.11).
-// It is one `--bind` value holding nine comma-separated bindings, exactly like
-// the .mjs. `pos(N)` needs fzf >= 0.36; our floor is 0.51.0 anyway.
+// numberBindings is the 1..9 quick-switch binding (SPEC §3.11): one `--bind`
+// value holding nine comma-separated bindings, exactly like the .mjs.
+// `pos(N)` needs fzf >= 0.36; our documented floor is 0.51.0 (--with-shell).
 func numberBindings() string {
 	parts := make([]string, 0, 9)
 	for i := 1; i <= 9; i++ {

@@ -36,7 +36,7 @@ const sessionSep = " @ "
 // ---------------------------------------------------------------------------
 
 // parseLines splits text on "\n", trims every line and drops the empty ones
-// (SPEC §4.6). Empty input gives an empty slice, never nil-vs-empty surprises.
+// (SPEC §4.6). Empty input gives an empty slice, never nil.
 func parseLines(text string) []string {
 	out := []string{}
 	if text == "" {
@@ -60,19 +60,16 @@ func ensureTrailingNewline(text string) string {
 	return text + "\n"
 }
 
-// normalizeAtColumns normalises the spacing around "@" (SPEC §4.1 step 5).
-// "ADC  @  3 windows" becomes "ADC @ 3 windows".
-// A line without an "@" is only trimmed.
+// normalizeAtColumns normalises the spacing around "@" (SPEC §4.1 step 5):
+// "ADC  @  3 windows" becomes "ADC @ 3 windows". A line with no "@" is trimmed.
 //
-// The name says "At" and not "delimiter" on purpose: the split and the join are
-// DIFFERENT strings and that asymmetry is load-bearing. The .mjs splits on the
-// single character "@" and rejoins with " @ " (sessionSep). There is no
-// delimiter parameter, because passing " @ " would look right, compile, and
-// silently corrupt any row holding a bare "@".
+// The name says "At", not "delimiter", on purpose. The split and the join are
+// DIFFERENT strings and that asymmetry is load-bearing: the split is on the
+// single character "@", the join is " @ ". A delimiter parameter would look
+// right, compile, and silently corrupt any row holding a bare "@".
 //
-// Consequence, kept bug-compatible with the .mjs: the split is on EVERY "@", so
-// "a@b@c" becomes "a @ b @ c". A session named "e@mail" therefore gets an extra
-// column. tmux allows such a name; assertValidSessionName does not.
+// Bug-compatible with the .mjs: splitting on EVERY "@" turns "a@b@c" into
+// "a @ b @ c". tmux allows a session named "e@mail"; the name validator does not.
 func normalizeAtColumns(lines []string) []string {
 	out := []string{}
 	if len(lines) == 0 {
@@ -95,9 +92,9 @@ func normalizeAtColumns(lines []string) []string {
 // addNumberPrefixes turns the first 9 normal rows into "[1] row" … "[9] row"
 // (SPEC §4.3).
 //
-// M12: the test is a plain leading-"[" test. ANY item starting with "[" is
-// pushed unchanged and does NOT consume a number. tmux allows a session named
-// "[work]", so the row "[work] @ 3 windows" stays unnumbered. Keep this.
+// M12: the test is a plain leading-"[" test, so ANY item starting with "[" is
+// pushed through unchanged and does NOT consume a number. tmux allows a session
+// named "[work]", so "[work] @ 3 windows" stays unnumbered. Keep this.
 func addNumberPrefixes(items []string) []string {
 	out := make([]string, 0, len(items))
 	numberIndex := 1
@@ -172,36 +169,25 @@ func dedupe(items []string) []string {
 	return out
 }
 
-// ---------------------------------------------------------------------------
-// Shell word splitting (SPEC §0.5)
-// ---------------------------------------------------------------------------
-
-// splitShellWords splits a POSIX shell command line into words.
-// Used for TMUX_FZF_BIN and TMUX_FZF_OPTIONS (SPEC §0.5).
-// No variable expansion, no command substitution, no globbing, no redirection.
-// An unbalanced quote is an error, never a guess.
+// splitShellWords splits a POSIX shell command line into words, for
+// TMUX_FZF_BIN and TMUX_FZF_OPTIONS (SPEC §0.5). No expansion, no substitution,
+// no globbing. An unbalanced quote is an error, never a guess.
 func splitShellWords(s string) ([]string, error) {
 	return shellquote.Split(s)
 }
 
-// joinShellWords quotes words so a POSIX sh reparses them as the same words.
-// Used to build the fzf --bind inner command (SPEC Q17).
+// joinShellWords quotes words so a POSIX sh reparses them as the same words,
+// for the fzf --bind inner command (SPEC Q17).
 // Never pass fzf's {} placeholder through this — fzf quotes it itself.
 func joinShellWords(words ...string) string {
 	return shellquote.Join(words...)
 }
 
 // ---------------------------------------------------------------------------
-// Validators (SPEC §11)
+// Validators (SPEC §11). The .mjs `typeof value !== 'string'` branch is
+// unreachable in Go, so its message is gone; every other message is kept word
+// for word. Length is counted in runes, not UTF-16 code units.
 // ---------------------------------------------------------------------------
-//
-// Go note: the .mjs also checks `typeof value !== 'string'`. In Go these
-// parameters are already typed `string`, so that branch is unreachable and the
-// message `<field> must be a string, got <typeof>` can never fire. Every other
-// message is kept word for word.
-//
-// Length is counted in runes. JavaScript counts UTF-16 code units. The two
-// agree for every character these fields realistically hold.
 
 // assertNonEmptyString rejects an empty value (SPEC §11.1).
 func assertNonEmptyString(value, field string) error {
