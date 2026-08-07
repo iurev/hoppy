@@ -39,6 +39,10 @@ const sessionListFormat = "#S @ #{session_windows} windows"
 // Pane list format (SPEC §0.9.1 row 2). The separator is a real TAB.
 const panePathFormat = "#{session_name}\t#{pane_current_path}"
 
+// paneIDFormat is the -F value used to read a pane id (SPEC §0.9.1 style: no
+// quotes, one argv element). Shared by tmuxCurrentPaneID and tmuxSplitPrompt.
+const paneIDFormat = "#{pane_id}"
+
 // attachedFormat is the Q3 fix (SPEC §6.4, §3.14.1). The old code parsed the
 // default `tmux list-sessions` output, which has no " @ ", so every name came
 // back as a whole descriptive line and the detach filter was always empty.
@@ -108,7 +112,7 @@ func tmuxPaneCurrentPath() (string, error) {
 // promptSessionName records it BEFORE the split so it can kill the prompt pane
 // afterwards (SPEC §9.2.1 step 2).
 func tmuxCurrentPaneID() (string, error) {
-	out, err := run("tmux", "display-message", "-p", "#{pane_id}")
+	out, err := run("tmux", "display-message", "-p", paneIDFormat)
 	return strings.TrimSpace(out), err
 }
 
@@ -234,12 +238,21 @@ func tmuxDisplayPopup(title, scriptPath, action string) error {
 	return err
 }
 
-// tmuxSplitPrompt opens the session-name prompt pane (SPEC §9.2, §9.2.1 step 3).
+// tmuxSplitPrompt opens the session-name prompt pane (SPEC §9.2, §9.2.1 step 3)
+// and returns the id of the NEW pane.
 // The pane is 30% high and sits above the current one (-b).
 // script is ONE argv element and is never re-quoted here.
-func tmuxSplitPrompt(script string) error {
-	_, err := run("tmux", "split-window", "-v", "-l", "30%", "-b", "sh", "-c", script)
-	return err
+//
+// `-P -F #{pane_id}` is what makes step 7 safe. Step 2 records the ORIGINAL
+// pane so focus can go back; the pane we must KILL is this new one, and there
+// is no other way to learn its id.
+//
+// Verified against tmux 3.5a: with more than one trailing argument tmux execs
+// the argv directly, so `sh -c <script>` really runs the script as one word.
+func tmuxSplitPrompt(script string) (string, error) {
+	out, err := run("tmux", "split-window", "-v", "-l", "30%", "-b",
+		"-P", "-F", paneIDFormat, "sh", "-c", script)
+	return strings.TrimSpace(out), err
 }
 
 // tmuxKillPane closes the prompt pane (SPEC §9.2.1 step 7).
@@ -247,6 +260,14 @@ func tmuxSplitPrompt(script string) error {
 // were meant for fzf.
 func tmuxKillPane(paneID string) error {
 	_, err := run("tmux", "kill-pane", "-t", paneID)
+	return err
+}
+
+// tmuxSelectPane puts the focus back on the pane recorded in §9.2.1 step 2.
+// Killing the prompt pane usually does this by itself, but not when the window
+// held other panes, so make it explicit.
+func tmuxSelectPane(paneID string) error {
+	_, err := run("tmux", "select-pane", "-t", paneID)
 	return err
 }
 

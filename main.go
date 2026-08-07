@@ -7,13 +7,7 @@
 //   - the action router (SPEC §2), in the exact order the .mjs uses
 //   - one small handler function per action (SPEC §3)
 //
-// IMPLEMENTED HERE: the action menu, switch, reload-sessions, the three popup
-// actions, worktree-switch and capital-switch.
-//
-// STILL STUBBED (next implementer): the helper actions switch-from-line,
-// kill-single-from-line and delayed-switch (they need the debounce half of
-// state.go), plus kill-single, new, rename, kill and detach (they need
-// prompt.go and the mutation flows). Every stub is marked "STUB".
+// All 15 actions are implemented.
 package main
 
 import (
@@ -21,8 +15,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
 // validActions is the list checked by assertValidAction (SPEC §2.1).
@@ -78,6 +75,15 @@ func start() int {
 	// SPEC §1 steps 5-6 (SESSION_SWITCH_DEBOUNCE_MS and the debounce file path)
 	// belong to the debounce half of state.go. Q6 moves the read to AFTER
 	// sourceEnv, so nothing is needed here.
+
+	// SPEC §9.2.1 step 1, and it must be HERE, not inside the action. The test
+	// opens the FIFO for writing about 2.2 s after launch and never creates it.
+	// If it is missing at that moment Python makes a plain file at the path and
+	// the name is lost, so the FIFO must exist before .envs sourcing (which
+	// runs two login shells) and before the prompt pane is spawned.
+	if first, _ := parseArgs(); first == "new" || first == "rename" {
+		prepareFifo()
+	}
 
 	// SPEC §1 step 8.
 	sourceEnv()
@@ -167,11 +173,11 @@ func route(action, arg, current string) int {
 	case "switch":
 		return actionSwitch(current)
 	case "rename":
-		return actionRename()
+		return actionRename(current)
 	case "kill":
-		return actionKill()
+		return actionKill(current)
 	case "detach":
-		return actionDetach()
+		return actionDetach(current)
 	}
 
 	// Unreachable: the gate above accepts nothing else (.mjs 662-663).
@@ -538,63 +544,379 @@ func checkSelfPath() int {
 }
 
 // ---------------------------------------------------------------------------
-// STUBS — owned by the next implementer
+// Helper actions (SPEC §3.4-§3.6)
 // ---------------------------------------------------------------------------
 //
-// The fzf bindings for Ctrl+N, Ctrl+P and DEL are already wired (see
-// switchBindings in fzf.go), so these three are called for real today. They MUST
-// exit 0 and stay silent: fzf runs them inside execute()/execute-silent() while
-// the list is on screen, and a stray line or a non-zero code shows up in the UI.
+// fzf runs these three inside execute()/execute-silent() while the list is on
+// screen. They MUST exit 0 and stay silent: a stray line or a non-zero code
+// shows up in the UI, and a non-zero code from execute() would stop the reload.
 
-// actionKillSingleFromLine is SPEC §3.4. STUB.
-// TODO(next): extractSessionName(line), then tmux kill-session -t <name>.
-// No name validation and no [cancel] guard — that is the .mjs behaviour.
+// actionKillSingleFromLine is SPEC §3.4, bound to the DEL key.
+// No name validation and no "[cancel]" guard: that is the .mjs behaviour and
+// killing a session called "[cancel]" simply fails inside tmux.
 func actionKillSingleFromLine(line string) int {
-	logEvent("action=kill-single-from-line: STUB, not implemented yet")
-	_ = line
+	name := extractSessionName(line)
+	if name == "" {
+		return 0
+	}
+	if err := tmuxKillSession(name); err != nil {
+		logEvent("kill-single-from-line: tmux kill-session failed: " + err.Error())
+		return 0
+	}
+	logEvent("action=kill-single-from-line: killed " + name)
 	return 0
 }
 
-// actionSwitchFromLine is SPEC §3.5, the Ctrl+N / Ctrl+P preview. STUB.
-// TODO(next): extractSessionName, then scheduleSessionSwitch (SPEC §7.2).
+// actionSwitchFromLine is SPEC §3.5, bound to Ctrl+N and Ctrl+P.
+// It does not switch by itself: it writes the debounce state and starts the
+// detached child that will switch a moment later (SPEC §7.2).
 func actionSwitchFromLine(line string) int {
-	logEvent("action=switch-from-line: STUB, not implemented yet")
-	_ = line
+	name := extractSessionName(line)
+	if name == "" || name == "[cancel]" {
+		logEvent("action=switch-from-line: cancelled")
+		return 0
+	}
+	scheduleSessionSwitch(name)
 	return 0
 }
 
-// actionDelayedSwitch is SPEC §3.6, the detached debounce child. STUB.
-// TODO(next): handleDelayedSwitch(token) (SPEC §7.3).
+// actionDelayedSwitch is SPEC §3.6, the detached debounce child.
 func actionDelayedSwitch(token string) int {
-	logEvent("action=delayed-switch: STUB, not implemented yet")
-	_ = token
+	handleDelayedSwitch(token)
 	return 0
 }
 
-// actionKillSingle is SPEC §3.7 (the interactive Y/n confirm). STUB.
+// ---------------------------------------------------------------------------
+// Mutation actions (SPEC §3.7, §3.8, §3.12, §3.13, §3.14)
+// ---------------------------------------------------------------------------
+
+// actionKillSingle is SPEC §3.7, the legacy interactive confirm.
+// No fzf, no list: the name comes from argv and one keypress confirms it.
 func actionKillSingle(name string) int {
-	_ = name
-	return notImplemented("kill-single")
+	if name == "" {
+		fmt.Fprintln(os.Stderr, "Error: Session name required for kill-single action")
+		return 1
+	}
+	if err := assertValidSessionName(name); err != nil {
+		logEvent("Invalid target session: " + err.Error())
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+		return 1
+	}
+	if !tmuxHasSession(name) {
+		_ = tmuxDisplayMessage(tmuxSessionMissingMessage(name))
+		return 1
+	}
+
+	fmt.Println()
+	fmt.Printf("⚠️  Kill session \"%s\"?\n", name)
+	fmt.Println("Press Y to confirm, any other key to cancel...")
+	fmt.Println()
+
+	key, err := readConfirmKey(killSingleTimeout)
+	if err != nil {
+		// M9: with a pipe, a file or /dev/null on stdin this fires AT ONCE.
+		// The .mjs never waits 30 s in that case either, because setRawMode
+		// throws immediately, so do not "improve" this into a real timeout.
+		fmt.Println("✗ Timeout or error, kill cancelled")
+		return 0
+	}
+
+	switch key {
+	case 'Y', 'y':
+		if err := tmuxKillSession(name); err != nil {
+			logEvent("kill-single: tmux kill-session failed: " + err.Error())
+			fmt.Printf("✗ Failed to kill session \"%s\"\n", name)
+		} else {
+			logEvent("action=kill-single: killed " + name)
+			fmt.Printf("✓ Session \"%s\" killed\n", name)
+		}
+	default:
+		fmt.Println("✗ Kill cancelled")
+	}
+
+	// The .mjs waits so the user can read the result before the pane closes.
+	time.Sleep(killSingleResultPause)
+	return 0
 }
 
-// actionNew is SPEC §3.8. STUB — needs prompt.go (the FIFO, SPEC §9.2.1).
-func actionNew() int { return notImplemented("new") }
+// actionNew is SPEC §3.8. Q8/D7: the prompt really works now.
+func actionNew() int {
+	name := promptSessionName()
+	if name == "" {
+		logEvent("action=new: cancelled")
+		return 0
+	}
+	if err := assertValidSessionName(name); err != nil {
+		logEvent("Invalid target session: " + err.Error())
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+		return 1
+	}
 
-// actionRename is SPEC §3.12. STUB — needs prompt.go.
-func actionRename() int { return notImplemented("rename") }
+	if err := tmuxNewSessionDetached(name); err != nil {
+		logEvent("new: tmux new-session failed: " + err.Error())
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+		return 1
+	}
+	logEvent("action=new: created " + name)
 
-// actionKill is SPEC §3.13. STUB.
-func actionKill() int { return notImplemented("kill") }
+	if err := tmuxSwitchClient(name); err != nil {
+		logEvent("new: tmux switch-client failed: " + err.Error())
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+		return 1
+	}
+	logEvent("action=new: switched to " + name)
+	// No frecency record for a new session (SPEC §3.8 step 6).
+	return 0
+}
 
-// actionDetach is SPEC §3.14. STUB.
-func actionDetach() int { return notImplemented("detach") }
+// actionRename is SPEC §3.12. Q8/D7: the prompt really works now.
+//
+// Q12 FIX: the .mjs called the selector WITHOUT the current session, so the
+// list held both a literal "[current]" row and the real current-session row —
+// two rows meaning the same thing. The port passes the current session and
+// pins it at the top, exactly like `switch`. So there is no "[current]" row
+// here any more.
+func actionRename(current string) int {
+	name := promptSessionName()
+	if name == "" {
+		logEvent("action=rename: cancelled")
+		return 0
+	}
+	if err := assertValidSessionName(name); err != nil {
+		logEvent("Invalid target session: " + err.Error())
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+		return 1
+	}
 
-// notImplemented fails loudly. A silent exit 0 here would look like a working
-// action that quietly does nothing, which is much harder to notice.
-func notImplemented(action string) int {
-	logEvent("action=" + action + ": not implemented yet")
-	fmt.Fprintln(os.Stderr, "Error: action "+action+" is not implemented yet")
-	return 1
+	items, code := buildSelectorRows(current, "rename")
+	if code != 0 {
+		return code
+	}
+	selection, err := runFzf(items, headerTarget, nil)
+	if err != nil {
+		return fail("rename", err)
+	}
+
+	targets := parseTargets(selection, current)
+	if len(targets) == 0 {
+		logEvent("action=rename: cancelled")
+		return 0
+	}
+	if err := assertValidSessionName(targets[0]); err != nil {
+		logEvent("Invalid target session: " + err.Error())
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+		return 1
+	}
+
+	if err := tmuxRenameSession(targets[0], name); err != nil {
+		logEvent("rename: tmux rename-session failed: " + err.Error())
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+		return 1
+	}
+	logEvent("action=rename: renamed " + targets[0] + " to " + name)
+	return 0
+}
+
+// actionKill is SPEC §3.13. Q12 FIX applies here too, see actionRename.
+//
+// TAB multi-select needs "--multi" in TMUX_FZF_OPTIONS or FZF_DEFAULT_OPTS.
+// The program never adds it by itself.
+func actionKill(current string) int {
+	items, code := buildSelectorRows(current, "kill")
+	if code != 0 {
+		return code
+	}
+	selection, err := runFzf(items, headerTargets, nil)
+	if err != nil {
+		return fail("kill", err)
+	}
+
+	targets := parseTargets(selection, current)
+	if len(targets) == 0 {
+		logEvent("action=kill: cancelled")
+		return 0
+	}
+	// Every target is validated BEFORE the first kill, so a bad name in the
+	// middle of a multi-select cannot leave the job half done.
+	for _, target := range targets {
+		if err := assertValidSessionName(target); err != nil {
+			logEvent("Invalid target session: " + err.Error())
+			fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+			return 1
+		}
+	}
+
+	for _, target := range reverseSorted(targets) {
+		if err := tmuxKillSession(target); err != nil {
+			logEvent("kill: tmux kill-session failed: " + err.Error())
+			continue
+		}
+		logEvent("action=kill: killed " + target)
+	}
+	return 0
+}
+
+// actionDetach is SPEC §3.14 with the Q3 fix.
+//
+// Q3: the .mjs compared raw `tmux list-sessions` lines against formatted names,
+// so the filter matched nothing and only the "[current]" row was ever usable.
+// tmuxAttachedSessionNames asks tmux for #{session_attached} instead, so real
+// attached sessions now appear.
+//
+// SPEC §3.14.1 is explicit: keep the "[current]" row. It is the only part of
+// detach that works today and dropping it would silently empty the list.
+func actionDetach(current string) int {
+	sessions, code := loadSessions(current, "detach")
+	if code != 0 {
+		return code
+	}
+
+	attached, err := tmuxAttachedSessionNames()
+	if err != nil {
+		logEvent("detach: tmux list-sessions failed: " + err.Error())
+		attached = map[string]bool{}
+	}
+
+	items := []string{"[current]"}
+	for _, line := range sessions {
+		if attached[extractSessionName(line)] {
+			items = append(items, line)
+		}
+	}
+	items = dedupe(append(items, "[cancel]"))
+
+	// No number prefixes and no extra bindings here (SPEC §3.14 step 1).
+	selection, err := runFzf(items, headerTargets, nil)
+	if err != nil {
+		return fail("detach", err)
+	}
+
+	targets := parseTargets(selection, current)
+	if len(targets) == 0 {
+		logEvent("action=detach: cancelled")
+		return 0
+	}
+	for _, target := range targets {
+		if err := assertValidSessionName(target); err != nil {
+			logEvent("Invalid target session: " + err.Error())
+			fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+			return 1
+		}
+	}
+
+	// Selection order, not sorted: detach has no ordering quirk to preserve.
+	for _, target := range targets {
+		if err := tmuxDetachClient(target); err != nil {
+			logEvent("detach: tmux detach failed: " + err.Error())
+			continue
+		}
+		logEvent("action=detach: detached " + target)
+	}
+	return 0
+}
+
+// reverseSorted is quirk Q14, marked KEEP: `kill` deletes in reverse
+// lexicographic order. Go compares UTF-8 bytes and JavaScript compares UTF-16
+// code units, and both agree for every character the name validator accepts
+// (all of them are non-surrogate BMP, at most U+FEFF).
+func reverseSorted(targets []string) []string {
+	ordered := append([]string(nil), targets...)
+	sort.Strings(ordered)
+	for i, j := 0, len(ordered)-1; i < j; i, j = i+1, j-1 {
+		ordered[i], ordered[j] = ordered[j], ordered[i]
+	}
+	return ordered
+}
+
+// ---------------------------------------------------------------------------
+// One raw keypress, for kill-single (SPEC §3.7 step 5, M9)
+// ---------------------------------------------------------------------------
+
+const (
+	// killSingleTimeout is the 30 s wait of the .mjs.
+	killSingleTimeout = 30 * time.Second
+	// killSingleResultPause lets the user read the result line.
+	killSingleResultPause = 800 * time.Millisecond
+)
+
+// readConfirmKey reads exactly one byte from a terminal stdin.
+//
+// M9: when stdin is NOT a terminal the .mjs fails at once, because
+// setRawMode throws. The TCGETS ioctl below fails in exactly the same cases —
+// a pipe, a regular file, /dev/null — so we return the error immediately and
+// never wait 30 s.
+func readConfirmKey(timeout time.Duration) (byte, error) {
+	fd := os.Stdin.Fd()
+	previous, err := enterRawMode(fd)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = setTermios(fd, previous) }()
+
+	type result struct {
+		key byte
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		var buf [1]byte
+		n, err := os.Stdin.Read(buf[:])
+		if err != nil {
+			done <- result{0, err}
+			return
+		}
+		if n == 0 {
+			done <- result{0, errors.New("no input")}
+			return
+		}
+		done <- result{buf[0], nil}
+	}()
+
+	select {
+	case r := <-done:
+		return r.key, r.err
+	case <-time.After(timeout):
+		return 0, errors.New("timed out waiting for a keypress")
+	}
+}
+
+// enterRawMode turns off echo and line buffering and returns the old settings.
+// It uses the raw ioctls on purpose: golang.org/x/term would be a second
+// production dependency for one legacy action nobody tests.
+func enterRawMode(fd uintptr) (*syscall.Termios, error) {
+	previous, err := getTermios(fd)
+	if err != nil {
+		return nil, err
+	}
+	raw := *previous
+	raw.Lflag &^= syscall.ECHO | syscall.ICANON | syscall.ISIG | syscall.IEXTEN
+	raw.Iflag &^= syscall.IXON | syscall.ICRNL | syscall.BRKINT | syscall.INPCK | syscall.ISTRIP
+	raw.Cc[syscall.VMIN] = 1
+	raw.Cc[syscall.VTIME] = 0
+	if err := setTermios(fd, &raw); err != nil {
+		return nil, err
+	}
+	return previous, nil
+}
+
+func getTermios(fd uintptr) (*syscall.Termios, error) {
+	var t syscall.Termios
+	if err := ioctlTermios(fd, syscall.TCGETS, &t); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func setTermios(fd uintptr, t *syscall.Termios) error {
+	return ioctlTermios(fd, syscall.TCSETS, t)
+}
+
+func ioctlTermios(fd, request uintptr, t *syscall.Termios) error {
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, request, uintptr(unsafe.Pointer(t)))
+	if errno != 0 {
+		return errno
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

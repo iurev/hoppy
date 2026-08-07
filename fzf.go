@@ -7,7 +7,7 @@
 //
 //	<words of TMUX_FZF_BIN> <words of TMUX_FZF_OPTIONS>
 //	--no-sort --delimiter " @ " --with-nth=1.. --nth=1
-//	--with-shell sh
+//	--with-shell "sh -c"
 //	[--header <text>] [--bind <binding> ...]
 //
 // Every quote in SPEC §10.2 is a SHELL quote. There are none here: `--delimiter`
@@ -43,6 +43,22 @@ const (
 // fzfMinVersion is the documented floor. 0.51.0 is the first release with
 // --with-shell, which is what makes our POSIX quoting of --bind provably right.
 const fzfMinVersion = "0.51.0"
+
+// withShellValue is the value of --with-shell, and it MUST carry the flag.
+//
+// fzf's man page: "--with-shell=STR — Shell command and flags to start child
+// processes with, e.g. --with-shell 'ruby -e'". So fzf runs
+// `<STR split into words> <command>`, NOT `<STR> -c <command>`.
+//
+// SPEC §0.5 and ARCHITECTURE R2 both say `--with-shell sh`. That is WRONG and
+// it was verified against fzf 0.60.3: with a bare `sh`, fzf runs
+// `sh <command>`, sh treats the command text as a FILE NAME, and EVERY --bind
+// command silently fails. The del/reload binding and both Ctrl+N/P bindings
+// then do nothing at all — with no error anywhere, because execute-silent
+// hides the output.
+//
+// It is one argv element: "sh" space "-c". Never two.
+const withShellValue = "sh -c"
 
 // fzf's own exit codes (src/constants.go), read directly now that no bash sits
 // in between (SPEC §12).
@@ -159,7 +175,7 @@ func buildFzfArgv(header string, bindings []string) ([]string, error) {
 		"--nth=1",
 		// Without this, fzf runs --bind commands with $SHELL -c, and POSIX
 		// quoting of our path is wrong under fish or nushell (SPEC §0.5, Q17).
-		"--with-shell", "sh",
+		"--with-shell", withShellValue,
 	)
 
 	if header != "" {
@@ -242,7 +258,7 @@ func previewBindings(self string) []string {
 }
 
 // bindCommand shell-quotes the binary path and the action for the `sh` that fzf
-// runs the binding under (Q17). `--with-shell sh` guarantees that shell is
+// runs the binding under (Q17). `--with-shell "sh -c"` guarantees that shell is
 // POSIX, so shellquote.Join is provably right.
 //
 // The `{}` placeholder is NEVER passed through here: fzf substitutes the row and

@@ -241,14 +241,21 @@ func TestOtherCommandArgv(t *testing.T) {
 		},
 		{
 			// SPEC §9.2 / §9.2.1 step 3: the script is ONE argv element.
+			// -P -F prints the id of the NEW pane, which step 7 must kill.
 			"split-window prompt pane",
 			func() {
-				_ = tmuxSplitPrompt(`printf 'Session Name: '; read n; printf '%s\n' "$n" > /tmp/f`)
+				_, _ = tmuxSplitPrompt(`printf 'Session Name: '; read n; printf '%s\n' "$n" > /tmp/f`)
 			},
 			[]string{
 				"tmux", "split-window", "-v", "-l", "30%", "-b",
+				"-P", "-F", "#{pane_id}",
 				"sh", "-c", `printf 'Session Name: '; read n; printf '%s\n' "$n" > /tmp/f`,
 			},
+		},
+		{
+			"select-pane restores the original focus",
+			func() { _ = tmuxSelectPane("%0") },
+			[]string{"tmux", "select-pane", "-t", "%0"},
 		},
 		{
 			"attached sessions use the Q3 format",

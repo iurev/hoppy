@@ -58,7 +58,7 @@ func TestBuildFzfArgvDefaultShape(t *testing.T) {
 		"--delimiter", " @ ",
 		"--with-nth=1..",
 		"--nth=1",
-		"--with-shell", "sh",
+		"--with-shell", "sh -c",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("argv =\n  %#v\nwant\n  %#v", got, want)
@@ -83,7 +83,7 @@ func TestBuildFzfArgvFullOrder(t *testing.T) {
 		"--delimiter", " @ ",
 		"--with-nth=1..",
 		"--nth=1",
-		"--with-shell", "sh",
+		"--with-shell", "sh -c",
 		// 8: the header
 		"--header", "Select an action.",
 		// 9: one --bind pair per binding
@@ -155,8 +155,13 @@ func TestBuildFzfArgvOmitsAnEmptyHeader(t *testing.T) {
 	}
 }
 
-// SPEC §0.5 / Q17: --with-shell sh is what makes shellquote.Join provably right
+// SPEC §0.5 / Q17: --with-shell is what makes shellquote.Join provably right
 // inside --bind. Without it fzf uses $SHELL, which may be fish or nushell.
+//
+// The VALUE must be "sh -c", one argv element. fzf's --with-shell takes the
+// shell AND its flags and then runs `<those words> <command>`. A bare "sh"
+// makes fzf run `sh <command>`, so sh treats the command text as a file name
+// and EVERY binding fails silently. Verified against fzf 0.60.3.
 func TestBuildFzfArgvAlwaysForcesPosixShell(t *testing.T) {
 	withEnv(t, "TMUX_FZF_BIN", "fzf")
 	withEnv(t, "TMUX_FZF_OPTIONS", "")
@@ -166,8 +171,12 @@ func TestBuildFzfArgvAlwaysForcesPosixShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	i := indexOf(argv, "--with-shell")
-	if i < 0 || argv[i+1] != "sh" {
-		t.Errorf("argv = %#v, want --with-shell sh", argv)
+	if i < 0 {
+		t.Fatalf("argv = %#v, want --with-shell", argv)
+	}
+	if argv[i+1] != "sh -c" {
+		t.Errorf("--with-shell value = %q, want %q (the flag is not optional)",
+			argv[i+1], "sh -c")
 	}
 }
 

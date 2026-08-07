@@ -174,9 +174,19 @@ shell. So `<path>` must still be quoted for that shell. See Q17.
 fzf has done this since 0.11.3. If the user's `$SHELL` is `fish`, `nushell` or `csh`, POSIX
 quoting of our path is simply wrong.
 
-**Required fix: always add `--with-shell`, `sh` to our own argv** (two separate argv elements;
-fzf ≥ 0.51.0). Then the inner command really is run by POSIX `sh`, and `shellquote.Join` is
-provably correct. This makes the "`sh -c`" wording in §0.9.3 and Q17 true instead of hopeful.
+**Required fix: always add `--with-shell`, `sh -c` to our own argv** (two argv elements, and the
+second one is the three characters `s`, `h`, space, `-`, `c`; fzf ≥ 0.51.0). Then the inner
+command really is run by POSIX `sh`, and `shellquote.Join` is provably correct. This makes the
+"`sh -c`" wording in §0.9.3 and Q17 true instead of hopeful.
+
+**CORRECTION (2026-08-07, verified against fzf 0.60.3 — the value MUST carry the flag).**
+Earlier drafts of this section said `--with-shell`, `sh`. That is wrong. fzf's man page reads:
+"`--with-shell=STR` — Shell command **and flags** to start child processes with, e.g.
+`--with-shell 'ruby -e'`". fzf splits `STR` into words and runs `<those words> <command>`, so a
+bare `sh` makes fzf run `sh <command>`; `sh` then treats the command text as a **file name**,
+the file does not exist, and **every** `--bind` command fails. Nothing reports it: `execute-silent`
+hides the output, and `execute`/`reload` only draw a small "Command failed" note. The visible
+symptom is that DEL and Ctrl+N / Ctrl+P do nothing at all.
 It also sets the project's minimum fzf version to **0.51.0** (see O-1).
 
 ### 0.55 Binary name and path (BINDING — added 2026-08-07)
@@ -282,7 +292,7 @@ Four places really do take shell text. Do not confuse them with §0.9.1.
 |---|---|
 | `FZF_DEFAULT_OPTS` | fzf itself splits this variable shell-style. See §0.5. |
 | `TMUX_FZF_BIN` / `TMUX_FZF_OPTIONS` | user-supplied shell text. Must be shell-split. See §0.5 and Q16. |
-| the fzf `--bind` value, e.g. `execute(<path> kill-single-from-line {})` | fzf parses it and runs the inner command with **`$SHELL -c`**, falling back to `sh` only when `$SHELL` is empty. We force POSIX `sh` by passing `--with-shell sh` (§0.5), and then quote `<path>` for `sh`. See Q17. |
+| the fzf `--bind` value, e.g. `execute(<path> kill-single-from-line {})` | fzf parses it and runs the inner command with **`$SHELL -c`**, falling back to `sh` only when `$SHELL` is empty. We force POSIX `sh` by passing `--with-shell` with the value `sh -c` (§0.5 — the flag is part of the value), and then quote `<path>` for `sh`. See Q17. |
 | `tmux split-window … <command>` (1325) | tmux runs `<command>` through `/bin/sh -c`. This is exactly where Q8 goes wrong. |
 
 ---
@@ -1256,7 +1266,7 @@ There is no `FZF_DEFAULT_OPTS` string to build any more. The options above becom
 | 4 | `--delimiter`, ` @ ` — two elements. The value is a space, `@`, space. **No quotes.** |
 | 5 | `--with-nth=1..` |
 | 6 | `--nth=1` |
-| 7 | `--with-shell`, `sh` — two elements. Forces POSIX `sh` for `--bind` commands (§0.5). |
+| 7 | `--with-shell`, `sh -c` — two elements. The value carries the flag: fzf runs `<value words> <command>`, not `<value> -c <command>`. A bare `sh` breaks every binding (§0.5 correction). |
 | 8 | `--header`, `<header text>` — two elements, only if the header is non-empty. **No quotes**, so Q9 disappears. |
 | 9 | one `--bind` plus its value, as two elements, for each binding |
 
@@ -2065,8 +2075,9 @@ blacklist to a proper quoting routine.
 
 **Exact fix (added 2026-08-07):**
 
-1. Pass `--with-shell`, `sh` in our own argv. Without it fzf runs the inner command with
-   `$SHELL -c`, and POSIX quoting is wrong under `fish` or `nushell` (§0.5).
+1. Pass `--with-shell`, `sh -c` in our own argv (the value carries the flag — see the correction
+   in §0.5). Without it fzf runs the inner command with `$SHELL -c`, and POSIX quoting is wrong
+   under `fish` or `nushell` (§0.5).
 2. Build the binding with `shellquote.Join`, and **do not** put `{}` through it — `{}` is fzf's
    placeholder and fzf applies its own quoting to the substituted value:
    ```go
