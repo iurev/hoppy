@@ -92,24 +92,12 @@ func orderByFrecency(lines []string, st frecencyState, now time.Time) []string {
 func selectorItems(lines []string, current string, includeCurrent bool) []string {
 	items := make([]string, 0, len(lines)+2)
 
-	switch {
-	case current != "":
-		prefix := current + sessionSep
-		pinned := -1
-		for i, line := range lines {
-			if strings.HasPrefix(line, prefix) {
-				pinned = i
-				break
-			}
-		}
-		if pinned >= 0 {
-			items = append(items, lines[pinned])
-			items = append(items, lines[:pinned]...)
-			items = append(items, lines[pinned+1:]...)
-		} else {
-			items = append(items, lines...)
-		}
-	case includeCurrent:
+	switch pinned := indexOfCurrentRow(lines, current); {
+	case pinned >= 0:
+		items = append(items, lines[pinned])
+		items = append(items, lines[:pinned]...)
+		items = append(items, lines[pinned+1:]...)
+	case current == "" && includeCurrent:
 		items = append(items, "[current]")
 		items = append(items, lines...)
 	default:
@@ -118,6 +106,40 @@ func selectorItems(lines []string, current string, includeCurrent bool) []string
 
 	items = addNumberPrefixes(items)
 	return append(items, "[cancel]")
+}
+
+// indexOfCurrentRow returns the position of the row that belongs to the current
+// session, or -1 when there is none. The test is the same everywhere: the row
+// starts with "<current> @ ".
+func indexOfCurrentRow(lines []string, current string) int {
+	if current == "" {
+		return -1
+	}
+	prefix := current + sessionSep
+	for i, line := range lines {
+		if strings.HasPrefix(line, prefix) {
+			return i
+		}
+	}
+	return -1
+}
+
+// pinCurrentRow puts the current session's own row first, and falls back to the
+// literal "[current]" row only when the current session has no row at all.
+//
+// This is the `detach` list of SPEC §3.14.1 (Q12 FIX, 2026-08-07). It carries no
+// number prefixes and no "[cancel]" row: actionDetach adds what it needs.
+// Adding "[current]" unconditionally would show the current session twice, once
+// as "[current]" and once as its own row.
+func pinCurrentRow(lines []string, current string) []string {
+	out := make([]string, 0, len(lines)+1)
+	if i := indexOfCurrentRow(lines, current); i >= 0 {
+		out = append(out, lines[i])
+		out = append(out, lines[:i]...)
+		return append(out, lines[i+1:]...)
+	}
+	out = append(out, "[current]")
+	return append(out, lines...)
 }
 
 // filterCapital keeps only rows whose session name is all-uppercase-ish

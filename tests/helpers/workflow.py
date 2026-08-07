@@ -27,7 +27,19 @@ def clear_query(tmux, count, delay=0.08):
     tmux.clear_query_backspaces(count, delay=delay)
 
 
-def write_session_name_to_fifo(session_name, fifo_path="/tmp/tmux_fzf_session_name"):
+def session_name_fifo_path():
+    """Return the per-user FIFO path the binary creates (SPEC 9.2.1).
+
+    The binary builds the same path: <tmpdir>/tmux-session-<uid>/name.fifo.
+    The old path was the shared, world-writable /tmp/tmux_fzf_session_name.
+    """
+    tmpdir = os.environ.get("TMPDIR", "/tmp").rstrip("/") or "/tmp"
+    return os.path.join(tmpdir, f"tmux-session-{os.getuid()}", "name.fifo")
+
+
+def write_session_name_to_fifo(session_name, fifo_path=None):
     """Write a session name to the FIFO used by new/rename actions."""
+    if fifo_path is None:
+        fifo_path = session_name_fifo_path()
     with open(fifo_path, "w", encoding="utf-8") as fifo:
         fifo.write(f"{session_name}\n")

@@ -8,6 +8,7 @@ package main
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -164,9 +165,17 @@ func TestActionDetachListShape(t *testing.T) {
 	}
 
 	got := strings.Split(strings.TrimRight(fzf.stdin, "\n"), "\n")
-	want := []string{"[current]", "work @ 3 windows", "[cancel]"}
+	// Q12 FIX (2026-08-07): "work" is attached, so it has a real row. The
+	// literal "[current]" row must NOT be added next to it — that listed the
+	// same session twice, and dedupe cannot merge two different strings.
+	want := []string{"work @ 3 windows", "[cancel]"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("items = %#v, want %#v", got, want)
+	}
+	for _, item := range got {
+		if item == "[current]" {
+			t.Errorf("items = %#v: the current session is listed twice", got)
+		}
 	}
 	// SPEC §3.14 step 1: no number prefixes in this list.
 	for _, item := range got {
@@ -416,6 +425,89 @@ func TestActionNewEndToEnd(t *testing.T) {
 	}
 	if !reflect.DeepEqual(interesting, want) {
 		t.Errorf("calls = %#v, want %#v", interesting, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The prompt pane must die even when split-window "fails" (F3)
+// ---------------------------------------------------------------------------
+
+// TestPromptKillsThePaneWhenTheSplitAlsoReportsAnError pins the F3 fix.
+// execRun folds stderr into the error (tmux.go), so tmux can create the pane,
+// print its id on stdout, warn on stderr and STILL exit non-zero. Throwing that
+// id away left the pane alive. It is the ACTIVE pane, so it swallowed every
+// keystroke meant for fzf and `rename` hung until the test timed out.
+func TestPromptKillsThePaneWhenTheSplitAlsoReportsAnError(t *testing.T) {
+	f := installFake(t, func(argv []string) (string, error) {
+		switch {
+		case len(argv) >= 2 && argv[1] == "split-window":
+			// A real pane id on stdout AND a non-zero exit.
+			return "%7\n", errors.New("tmux: warning on stderr: exit status 1")
+		case len(argv) >= 2 && argv[1] == "display-message":
+			return "%0\n", nil
+		}
+		return "", nil
+	})
+
+	prepareFifo()
+	defer func() { fifoReady = false }()
+	writeFifoLine(t, fifoPath, "fresh_session")
+
+	name, err := promptSessionName()
+	if err != nil {
+		t.Fatalf("promptSessionName: %v", err)
+	}
+	if name != "fresh_session" {
+		t.Errorf("name = %q, want %q", name, "fresh_session")
+	}
+
+	killed := false
+	for _, call := range f.calls {
+		if len(call) >= 4 && call[1] == "kill-pane" && call[3] == "%7" {
+			killed = true
+		}
+	}
+	if !killed {
+		t.Errorf("the prompt pane was never killed: %#v", f.calls)
+	}
+	// Step 8: the FIFO is removed on every path.
+	if _, err := os.Stat(fifoPath); !os.IsNotExist(err) {
+		t.Errorf("the FIFO is still at %s", fifoPath)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// A broken prompt is NOT a cancel (F4, Q8, decision D7)
+// ---------------------------------------------------------------------------
+
+func TestActionNewTellsTheUserWhenThePromptIsBroken(t *testing.T) {
+	f := installFake(t, nil)
+
+	// A path whose parent directory does not exist: makeFifo cannot work.
+	old := fifoPath
+	fifoPath = filepath.Join(t.TempDir(), "missing", "tmux-session-test", fifoName)
+	t.Cleanup(func() {
+		fifoPath = old
+		fifoReady = false
+		fifoErr = nil
+	})
+
+	if code := actionNew(); code != 1 {
+		t.Fatalf("exit code = %d, want 1: a broken prompt must not look like a cancel", code)
+	}
+
+	told := false
+	for _, call := range f.calls {
+		if len(call) >= 3 && call[1] == "display-message" &&
+			strings.Contains(call[2], "Session name prompt failed") {
+			told = true
+		}
+		if len(call) >= 2 && call[1] == "new-session" {
+			t.Errorf("nothing may be created when the prompt failed: %#v", call)
+		}
+	}
+	if !told {
+		t.Errorf("the user was never told: %#v", f.calls)
 	}
 }
 

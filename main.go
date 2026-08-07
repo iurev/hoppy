@@ -37,6 +37,30 @@ var helperActions = []string{
 	"reload-sessions", "kill-single-from-line", "switch-from-line", "delayed-switch",
 }
 
+// fastHelperActions skip the two slow startup steps: sourceEnv (up to two
+// `bash -lc` LOGIN shells) and currentSession (one tmux call).
+//
+//	switch-from-line      writes the debounce file and spawns the child
+//	delayed-switch        sleeps, then switches
+//	kill-single-from-line runs one tmux kill-session
+//
+// None of them reads the current session. None of them runs fzf. And none of
+// them needs .envs sourced again: every one is a CHILD of the selector process,
+// which already sourced it, so PATH and SESSION_SWITCH_DEBOUNCE_MS are already
+// in the environment they inherit.
+//
+// This matters most for delayed-switch: the sourcing cost landed BEFORE the
+// debounce sleep, so the preview always reacted later than
+// SESSION_SWITCH_DEBOUNCE_MS asked for.
+//
+// `reload-sessions` is NOT here: it builds the session rows and needs the
+// current session to pin (SPEC §3.3, Q7).
+var fastHelperActions = map[string]bool{
+	"switch-from-line":      true,
+	"delayed-switch":        true,
+	"kill-single-from-line": true,
+}
+
 // defaultFzfBin is the ensureEnvDefaults value for TMUX_FZF_BIN (SPEC §8.2).
 const defaultFzfBin = "fzf"
 
@@ -76,13 +100,26 @@ func start() int {
 	// belong to the debounce half of state.go. Q6 moves the read to AFTER
 	// sourceEnv, so nothing is needed here.
 
+	// SPEC §1 step 15. O-4: argument present = argument given, so a session
+	// named "0" works here where the .mjs treated it as missing (§1.2, M11).
+	action, arg := parseArgs()
+
 	// SPEC §9.2.1 step 1, and it must be HERE, not inside the action. The test
 	// opens the FIFO for writing about 2.2 s after launch and never creates it.
 	// If it is missing at that moment Python makes a plain file at the path and
 	// the name is lost, so the FIFO must exist before .envs sourcing (which
 	// runs two login shells) and before the prompt pane is spawned.
-	if first, _ := parseArgs(); first == "new" || first == "rename" {
+	if action == "new" || action == "rename" {
 		prepareFifo()
+	}
+
+	// The fast path for the three fzf/debounce helper actions. See
+	// fastHelperActions: they need neither the sourced environment nor the
+	// current session, and both cost real time on every Ctrl+N keypress.
+	if fastHelperActions[action] {
+		logEvent("script started")
+		logEvent("action selected: " + action)
+		return route(action, arg, "")
 	}
 
 	// SPEC §1 step 8.
@@ -99,9 +136,6 @@ func start() int {
 
 	// SPEC §1 step 14 (excludeCurrent) is DELETED — decision D3.
 
-	// SPEC §1 step 15. O-4: argument present = argument given, so a session
-	// named "0" works here where the .mjs treated it as missing (§1.2, M11).
-	action, arg := parseArgs()
 	if action == "" {
 		selected, err := actionMenu()
 		if err != nil {
@@ -406,7 +440,7 @@ func actionSwitch(current string) int {
 func actionWorktreeSwitch(current string) int {
 	currentPath, err := tmuxPaneCurrentPath()
 	if err != nil {
-		logEvent("worktree-switch: tmux display-message failed: " + err.Error())
+		// No logEvent here: fail() already logs this error (D4 caps the log).
 		return fail("worktree-switch", err)
 	}
 
@@ -419,7 +453,7 @@ func actionWorktreeSwitch(current string) int {
 
 	panePaths, err := tmuxListPanePaths()
 	if err != nil {
-		logEvent("worktree-switch: tmux list-panes failed: " + err.Error())
+		// No logEvent here: fail() already logs this error (D4).
 		return fail("worktree-switch", err)
 	}
 
@@ -478,7 +512,7 @@ func actionCapitalSwitch(current string) int {
 func loadSessions(current, action string) ([]string, int) {
 	sessions, err := getSessionsList(current, loadFrecency(appDir), time.Now())
 	if err != nil {
-		logEvent(action + ": tmux list-sessions failed: " + err.Error())
+		// No logEvent here: fail() already logs this error (D4).
 		return nil, fail(action, err)
 	}
 	return sessions, 0
@@ -641,7 +675,10 @@ func actionKillSingle(name string) int {
 
 // actionNew is SPEC §3.8. Q8/D7: the prompt really works now.
 func actionNew() int {
-	name := promptSessionName()
+	name, err := promptSessionName()
+	if err != nil {
+		return promptFailed("new", err)
+	}
 	if name == "" {
 		logEvent("action=new: cancelled")
 		return 0
@@ -677,7 +714,10 @@ func actionNew() int {
 // pins it at the top, exactly like `switch`. So there is no "[current]" row
 // here any more.
 func actionRename(current string) int {
-	name := promptSessionName()
+	name, err := promptSessionName()
+	if err != nil {
+		return promptFailed("rename", err)
+	}
 	if name == "" {
 		logEvent("action=rename: cancelled")
 		return 0
@@ -763,8 +803,11 @@ func actionKill(current string) int {
 // tmuxAttachedSessionNames asks tmux for #{session_attached} instead, so real
 // attached sessions now appear.
 //
-// SPEC §3.14.1 is explicit: keep the "[current]" row. It is the only part of
-// detach that works today and dropping it would silently empty the list.
+// Q12 FIX (2026-08-07), SPEC §3.14.1: the literal "[current]" row is added ONLY
+// when the current session has no row of its own. Since the Q3 fix the current
+// session IS attached, so it always has a real row, and the old unconditional
+// "[current]" listed the same session twice. dedupe cannot merge the two: they
+// are different strings. This is the rule selectorItems already uses.
 func actionDetach(current string) int {
 	sessions, code := loadSessions(current, "detach")
 	if code != 0 {
@@ -777,12 +820,14 @@ func actionDetach(current string) int {
 		attached = map[string]bool{}
 	}
 
-	items := []string{"[current]"}
+	rows := []string{}
 	for _, line := range sessions {
 		if attached[extractSessionName(line)] {
-			items = append(items, line)
+			rows = append(rows, line)
 		}
 	}
+
+	items := pinCurrentRow(rows, current)
 	items = dedupe(append(items, "[cancel]"))
 
 	// No number prefixes and no extra bindings here (SPEC §3.14 step 1).
@@ -932,6 +977,22 @@ func fail(action string, err error) int {
 	}
 	fmt.Fprintln(os.Stderr, "Error: "+err.Error())
 	return 1
+}
+
+// promptFailed reports a BROKEN session-name prompt (Q8, decision D7).
+//
+// Every FIFO failure used to end as "cancelled" plus exit 0, so `new` and
+// `rename` did nothing and said nothing. That silence is the exact Q8 symptom
+// D7 told us to remove. A REAL cancel — the user typed an empty name, or the
+// prompt pane was closed — still returns "" with no error, stays silent and
+// exits 0.
+//
+// The message goes to stderr AND to tmux: `new` and `rename` usually run inside
+// a popup, and the popup closes before anyone can read stderr.
+func promptFailed(action string, err error) int {
+	msg := "Session name prompt failed: " + oneLine(err.Error())
+	_ = tmuxDisplayMessage(msg)
+	return fail(action, errors.New(msg))
 }
 
 // actionLabel keeps the cancel log line readable when no action was chosen.

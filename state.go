@@ -299,6 +299,18 @@ func scheduleSessionSwitch(target string) {
 
 	path := debouncePath()
 	now := time.Now()
+
+	// "Last write wins" must really mean "last KEYPRESS wins" (F5, 2026-08-07).
+	// Two switch-from-line processes can start microseconds apart and reach
+	// os.Rename in the opposite order to the keypresses. lastWrite is what tells
+	// them apart, so read it first: a stored write from the FUTURE belongs to a
+	// newer keypress, and overwriting it would hand the token to the older one
+	// and land the user one row short.
+	if prev := readDebounce(path); prev.LastWrite > now.UnixMilli() {
+		logEvent("session throttle: a newer keypress is already recorded, skipping target=" + name)
+		return
+	}
+
 	token := newToken(now, os.Getpid())
 
 	if !writeDebounce(path, debounceState{LastWrite: now.UnixMilli(), LastTarget: name, Token: token}) {

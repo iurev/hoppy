@@ -321,6 +321,31 @@ The script is an ES module. The top-level code runs in this exact order.
 | 16 | `logEvent('action selected: <action>')` | 50 | |
 | 17 | If action is empty or `[cancel]` → log, `exit 0` | 52-55 | |
 
+### 1.0 Fast path for three helper actions (ADDED 2026-08-07, F7)
+
+Steps 8 (`sourceEnv`) and 12 (`getCurrentSession`) are **skipped** for exactly three actions:
+
+| Action | Needs `sourceEnv`? | Needs `currentSession`? |
+|---|---|---|
+| `switch-from-line` | no | no |
+| `delayed-switch` | no | no |
+| `kill-single-from-line` | no | no |
+| `reload-sessions` | **yes** | **yes** — it pins the current row (§3.3, Q7) |
+
+`sourceEnv` runs up to **two `bash -lc` login shells** (§8.1). Every Ctrl+N keypress starts two
+processes — `switch-from-line` and its detached `delayed-switch` child — so the old code paid that
+cost four times per keypress, and `getCurrentSession` cost one extra `tmux display-message` per
+process. For `delayed-switch` the sourcing happened **before** the debounce sleep, so the preview
+always reacted later than `SESSION_SWITCH_DEBOUNCE_MS` asked for.
+
+`SESSION_SWITCH_DEBOUNCE_MS` still arrives. All three actions are **children** of the selector
+process, which already sourced `.envs` and called `os.Setenv`; `exec.Command` passes the parent
+environment on by default, so `PATH` and `SESSION_SWITCH_DEBOUNCE_MS` are already set in the
+environment they inherit. Q6 is unaffected: `delayed-switch` still reads the variable at its own
+start, not at the parent's.
+
+The FIFO step (§9.2.1 step 1) still runs first, and it only runs for `new` and `rename`.
+
 ### 1.1 `getCurrentSession()` validates but never fails (M5)
 
 `session-zx.mjs:1349-1362`. After `tmux display-message -p '#S'` the trimmed name is passed to
@@ -691,6 +716,25 @@ The **list** always has exactly two rows, and one of them works.
 part of `detach` that works today, and the tests may depend on it. Keep `[current]` first, then
 the real attached sessions, then `[cancel]`, then `dedupe`.
 
+> **CORRECTION — 2026-08-07 (F1). The rule above is now conditional.**
+>
+> It was written before the Q3 fix landed. With Q3 fixed, `tmuxAttachedSessionNames` asks tmux for
+> `#{session_attached}`, so the session the user is in **is** attached and **does** get a real row.
+> Adding `[current]` on top of that listed the same session twice — once as `[current]`, once as
+> `<current> @ N windows`. `dedupe` cannot merge them: they are different strings. This is exactly
+> quirk Q12, which the port already fixed for `rename` and `kill`.
+>
+> **The rule the Go port follows now** — the same rule `selectorItems` uses (§4.2):
+>
+> | Case | Items |
+> |---|---|
+> | a filtered row starts with `"<current> @ "` | that row first, then the other attached rows, then `[cancel]` |
+> | no such row (including `currentSession == ""`) | `[current]` first, then the attached rows, then `[cancel]` |
+>
+> The `[current]` row is therefore still there whenever it is the only way to detach the current
+> session — an empty filter still gives a usable list, so the "silently empty list" risk is gone.
+> Number prefixes are still **not** added here (§3.14 step 1), and `dedupe` still runs last.
+
 ---
 
 ## 4. Session list, formatting and ordering
@@ -964,6 +1008,16 @@ or on any other error (logged as `session debounce: failed to write <path>: <msg
 
 1. `trimmedName = targetName.trim()`. If empty → return `{switchedImmediately:false, scheduled:false}`.
 2. `now = Date.now()`.
+2a. **ADDED 2026-08-07 (F5): read the state file first and give way to a newer keypress.**
+   If the stored `lastWrite` is **greater than** `now`, log
+   `session throttle: a newer keypress is already recorded, skipping target=<name>` and return
+   without writing anything.
+   Reason: "last write wins" has to mean "last **keypress** wins". `lastWrite` was written and
+   normalised but never read, so it decided nothing. Two `switch-from-line` processes started
+   microseconds apart can reach `os.Rename` in the opposite order to the keypresses; the older
+   keypress then wins the token and the user lands one row short of the row they asked for.
+   Equal timestamps still let the later write through — inside one millisecond there is nothing
+   to tell the two apart.
 3. `token = `${now}-${process.pid}-${Math.random().toString(36).slice(2,10)}``
    → e.g. `1721476800000-48213-k3n2p9qz`. The random part is up to 8 base-36 chars.
 4. Write the state file with `{lastWrite: now, lastTarget: trimmedName, token}`.
@@ -1118,6 +1172,7 @@ the Go binary itself (`os.Executable()`), used to spawn the `delayed-switch` chi
 Used by `new` and `rename`.
 
 1. `fifo = path.join(os.tmpdir(), 'tmux_fzf_session_name')` → normally `/tmp/tmux_fzf_session_name`.
+   **The Go port does NOT use this path — see the correction in §9.2.1 (2026-08-07, F2).**
 2. Validate: tmpdir is a non-empty string (`Could not determine temp directory`),
    `fifo.length <= 4096` (`FIFO path is too long`), `fifo` starts with tmpdir (`FIFO path validation failed`).
 3. `rm -f <fifo>`
@@ -1173,7 +1228,7 @@ the *ordering* below part of the contract, not an implementation detail.
 
 | # | Step | Why it is mandatory |
 |---|---|---|
-| 1 | `os.Remove(fifo)`, then `syscall.Mkfifo(fifo, 0666)` — **the first thing the action does**, inside ~200 ms | the test opens the path for writing at t ≈ 2.2 s. If the FIFO is not there yet, Python creates a plain **regular file** at that path, our later `mkfifo` fails with `EEXIST`, and the name is lost. The `rm -f` also clears a leftover regular file from a crashed run. |
+| 1 | `syscall.Mkfifo(fifo, 0600)` inside a private `0700` directory — **the first thing the action does**, inside ~200 ms. Remove and retry only if something is already at the path. | the test opens the path for writing at t ≈ 2.2 s. If the FIFO is not there yet, Python creates a plain **regular file** at that path, our later `mkfifo` fails with `EEXIST`, and the name is lost. The remove-and-retry also clears a leftover regular file from a crashed run. |
 | 2 | record the current pane id: `tmux display-message -p '#{pane_id}'` — **before** the split | there is no other reliable way to get back to it |
 | 3 | `tmux split-window -v -l 30% -b sh -c <script>` with `<script>` as one argv element | see the shape above |
 | 4 | the redirect `> <fifo>` sits on the **last `printf` only**, never on the whole script or a `{ … }` block | if the whole script is redirected, the pane's shell opens the write end at once. A read-to-EOF then never returns (a second writer is still open), and the read may pick up the pane's own empty line. |
@@ -1183,6 +1238,66 @@ the *ordering* below part of the contract, not an implementation detail.
 | 8 | `os.Remove(fifo)` in a `defer`, only **after** the read returns | |
 
 Go note: use `syscall.Mkfifo` and `os.Remove`. Do not shell out to `mkfifo` / `rm -f`.
+
+#### 9.2.1.a CORRECTION — the FIFO path and mode (BINDING — 2026-08-07, F2)
+
+The path `/tmp/tmux_fzf_session_name` with mode `0666` came straight from the `.mjs`. It is a
+security hole and it is now **replaced**, not copied.
+
+`/tmp` is world-writable. With a fixed, world-readable, world-writable path, any other local user
+could read the session name the user typed, or open the FIFO first and write a name of their own,
+which then decides which session gets created or renamed.
+
+**Required now:**
+
+| What | Value | Mode |
+|---|---|---|
+| directory | `<tmpdir>/tmux-session-<uid>/` | `0700` |
+| FIFO | `<tmpdir>/tmux-session-<uid>/name.fifo` | `0600` |
+
+* `<uid>` is `os.Getuid()`, the same id the debounce file uses (§7.1).
+* **No collision with §7.1.** The debounce state is the FILE `<tmpdir>/tmux-session-<uid>.json`.
+  The directory name has no `.json` suffix, so the two names are always different strings.
+* The old explicit `os.Chmod(path, 0666)` after `mkfifo` — which existed only to defeat the umask —
+  is **deleted**. Do not add anything like it back.
+* Creating the directory must **fail loudly** when the path exists but is not a directory
+  (use `Lstat`, so a symlink fails instead of being followed), or when it belongs to another uid.
+  A directory of ours with wider rights is narrowed back to `0700`.
+* TOCTOU: call `mkfifo` **first**. On a clean run it succeeds and there is no remove/create window
+  at all. Only on `EEXIST` do we `os.Remove` and call `mkfifo` once more — and by then the
+  directory is `0700` and ours, so no other user can race us inside it.
+* `tests/helpers/workflow.py` builds the same path from `os.getuid()`. That is a binding contract:
+  the helper and the binary must agree.
+
+#### 9.2.1.b CORRECTION — a failed prompt is not a cancel (BINDING — 2026-08-07, F4)
+
+`promptSessionName` used to return `""` for **every** outcome: the user cancelled, `mkfifo` failed,
+the read timed out, the path was unusable. `new` and `rename` then logged "cancelled" and exited 0,
+so the user saw nothing at all. That is the Q8 symptom decision D7 told us to remove, only moved
+one level down.
+
+`promptSessionName` now returns `(name, error)`:
+
+| Result | Meaning | What the action does |
+|---|---|---|
+| `("", nil)` | real cancel — the user typed an empty name, or closed the prompt pane | stay silent, `exit 0` |
+| `(name, nil)` | the user typed a name | carry on |
+| `("", err)` | the prompt itself **broke** | one line on stderr **and** `tmux display-message`, `exit 1` |
+
+The tmux message is required as well as stderr: `new` and `rename` usually run inside a popup, and
+the popup closes before anyone can read stderr.
+
+#### 9.2.1.c CORRECTION — keep the pane id from a "failed" split (BINDING — 2026-08-07, F3)
+
+`execRun` folds the child's stderr into the returned error (`tmux.go`). So `tmux split-window`
+can create the pane, print its id on **stdout**, print a warning on **stderr** and still exit
+non-zero. The old code threw the id away whenever `err != nil`, and the pane was then never
+killed. Step 7 says why that matters: the new pane is the **active** pane, so it swallows every
+keystroke meant for fzf and `rename` hangs until the test times out.
+
+Required: when `split-window` returns an error, still keep the returned value if it looks like a
+pane id (`strings.HasPrefix(out, "%")`). Step 7 must run on **every** path out of the function
+(use a `defer`), and step 8 must remove the FIFO on every path too.
 
 ---
 
@@ -1547,6 +1662,28 @@ Rules kept from today:
 
 Messages 11, 12, 13, 15 must keep their **exact** wording — the debounce behaviour is subtle and
 these lines are the only way to debug it.
+
+> **CORRECTION — 2026-08-07 (F6). One failure, one line.**
+>
+> Message 16 is written by `fail()`, which logs and then prints to stderr. Three sites logged their
+> own message 16 first and then called `fail()`, so one failure produced **two** log lines. D4 caps
+> the log at about 20 key events, so the first `logEvent` at each of those sites is deleted:
+> `worktree-switch` after `tmux display-message`, `worktree-switch` after `tmux list-panes`, and
+> `loadSessions` after `tmux list-sessions`.
+>
+> The line kept is the one `fail()` writes: `<action>: <msg>`. The `<subcommand>` part of message 16
+> is dropped there, but the error text from `execRun` already begins with the program name and the
+> command's own stderr, so nothing needed for debugging is lost.
+>
+> `actionKillSingleFromLine` looks like a fourth such site but is **not** one: it logs and then
+> returns 0 without calling `fail()` (it must always exit 0, §3.4). That `logEvent` is the only
+> record of the failure and it stays.
+>
+> **New message (F5):** `session throttle: a newer keypress is already recorded, skipping target=<name>`.
+> See §7.2 step 2a.
+>
+> **New message (F4):** a broken name prompt is reported through `fail()` as
+> `<action>: Session name prompt failed: <msg>` and shown with `tmux display-message`. See §9.2.1.b.
 
 ### 13.3 Rotation wipe bug — MUST FIX (M10)
 
@@ -1937,6 +2074,8 @@ Two consequences:
 log "no session name provided" and exit 0. **`new` and `rename` are dead in interactive use.**
 The existing pytest suite hides this: `tests/helpers/workflow.py:30` writes the name straight into
 `/tmp/tmux_fzf_session_name`, bypassing the prompt.
+(**2026-08-07, F2:** the helper now writes to `<tmpdir>/tmux-session-<uid>/name.fifo` instead —
+see §9.2.1.a. The point above still stands: the helper bypasses the prompt.)
 
 Fix: in Go, do not build a shell string at all. Either use
 `tmux command-prompt -p "Session Name:" "run-shell '<binary> ... %%'"`, or pass the inner command

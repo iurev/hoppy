@@ -8,6 +8,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -38,9 +39,56 @@ func TestPromptScriptRedirectsOnlyTheLastPrintf(t *testing.T) {
 }
 
 func TestFifoPathIsTheOneTheTestsWriteTo(t *testing.T) {
-	// tests/helpers/workflow.py:31 hard-codes this path. It is a contract.
-	if fifoPath != "/tmp/tmux_fzf_session_name" {
-		t.Errorf("fifoPath = %q", fifoPath)
+	// tests/helpers/workflow.py builds the same path from os.getuid().
+	// It is a contract (SPEC §9.2.1, corrected 2026-08-07).
+	want := filepath.Join(os.TempDir(), "tmux-session-"+strconv.Itoa(os.Getuid()), "name.fifo")
+	if fifoPath != want {
+		t.Errorf("fifoPath = %q, want %q", fifoPath, want)
+	}
+	// The directory must not collide with the debounce state file, which is
+	// <tmp>/tmux-session-<uid>.json (SPEC §7.1).
+	if fifoDir() == debouncePath() {
+		t.Errorf("the FIFO directory collides with the debounce file: %q", fifoDir())
+	}
+}
+
+func TestMakeFifoUsesPrivatePermissions(t *testing.T) {
+	// /tmp is shared. A world-writable FIFO let any local user read the name
+	// the user typed, or write a name of their own.
+	dir := filepath.Join(t.TempDir(), "tmux-session-test")
+	path := filepath.Join(dir, fifoName)
+
+	if err := makeFifo(path); err != nil {
+		t.Fatalf("makeFifo: %v", err)
+	}
+
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat dir: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != fifoDirMode {
+		t.Errorf("directory mode = %o, want %o", got, fifoDirMode)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat fifo: %v", err)
+	}
+	if got := info.Mode().Perm(); got&0o077 != 0 {
+		t.Errorf("fifo mode = %o, want no group or other bits", got)
+	}
+}
+
+func TestMakeFifoRefusesAPathThatIsNotADirectory(t *testing.T) {
+	// A plain file where our private directory belongs means somebody else got
+	// there first. Fail loudly instead of carrying on.
+	base := t.TempDir()
+	blocker := filepath.Join(base, "tmux-session-test")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	if err := makeFifo(filepath.Join(blocker, fifoName)); err == nil {
+		t.Fatal("want an error, got nil")
 	}
 }
 

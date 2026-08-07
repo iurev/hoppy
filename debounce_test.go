@@ -209,6 +209,65 @@ func TestWriteDebounceFailsOnAMissingDirectory(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// scheduleSessionSwitch — "last KEYPRESS wins", not "last write wins" (F5)
+// ---------------------------------------------------------------------------
+//
+// TMPDIR moves debouncePath() into the test's own directory, so these two never
+// touch the real /tmp state file.
+
+func TestScheduleSessionSwitchSkipsAnOlderKeypress(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	f := installFake(t, nil)
+
+	// A newer keypress already landed. Two processes started microseconds apart
+	// can reach os.Rename in the wrong order, and the older one must give way.
+	newer := debounceState{
+		LastWrite:  time.Now().Add(time.Minute).UnixMilli(),
+		LastTarget: "newer",
+		Token:      "1-2-newer000",
+	}
+	path := debouncePath()
+	if !writeDebounce(path, newer) {
+		t.Fatal("writeDebounce reported failure")
+	}
+
+	scheduleSessionSwitch("older")
+
+	if got := readDebounce(path); got != newer {
+		t.Errorf("state = %+v, want it untouched: %+v", got, newer)
+	}
+	if len(f.calls) != 0 {
+		t.Errorf("an older keypress must not switch: %#v", f.calls)
+	}
+}
+
+func TestScheduleSessionSwitchRecordsANewerKeypress(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	installFake(t, nil)
+	// selfPath is what spawnDelayedSwitch runs. Empty means the spawn fails at
+	// once, so the test starts no real process.
+	oldSelf := selfPath
+	selfPath = ""
+	t.Cleanup(func() { selfPath = oldSelf })
+
+	path := debouncePath()
+	older := debounceState{
+		LastWrite:  time.Now().Add(-time.Minute).UnixMilli(),
+		LastTarget: "older",
+		Token:      "1-2-older000",
+	}
+	if !writeDebounce(path, older) {
+		t.Fatal("writeDebounce reported failure")
+	}
+
+	scheduleSessionSwitch("newer")
+
+	if got := readDebounce(path).LastTarget; got != "newer" {
+		t.Errorf("lastTarget = %q, want %q", got, "newer")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Paths and the debounce delay (SPEC §7.1, §7.3 step 2, Q6)
 // ---------------------------------------------------------------------------
 
