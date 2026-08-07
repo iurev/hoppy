@@ -49,6 +49,16 @@ def test_switch_arrow_down_then_enter_switches(tmux, create_sessions):
 
 
 def test_switch_arrow_up_changes_cursor_then_switches(tmux, create_sessions):
+    """Arrow Up moves the cursor back exactly one row, and Enter takes it.
+
+    Rows are [1] test_session (current, pinned), [2] up_a, [3] up_b, [4] up_c.
+    Down, Down lands on [3] up_b; Up goes back to [2] up_a.
+
+    Breaks if: the row order changes, Arrow Up stops moving the cursor, or
+    Enter switches to any other session than up_a. (Checking only that the
+    screen redrew, or that we landed on *some* up_* session, could not catch
+    an off-by-one cursor.)
+    """
     create_sessions("up_a", "up_b", "up_c")
 
     tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
@@ -57,21 +67,25 @@ def test_switch_arrow_up_changes_cursor_then_switches(tmux, create_sessions):
     tmux.press_arrow_down()
     time.sleep(0.2)
     tmux.press_arrow_down()
-    time.sleep(0.2)
-    before_up = tmux.get_output()
+    time.sleep(0.4)
+
+    before_up = tmux.get_selected_row()
+    assert before_up is not None and before_up.startswith("[3] up_b @"), (
+        f"Two arrows down should select '[3] up_b', got '{before_up}'"
+    )
 
     tmux.press_arrow_up()
-    time.sleep(0.3)
-    after_up = tmux.get_output()
+    time.sleep(0.4)
 
-    assert before_up != after_up, "Arrow up did not change fzf state."
+    after_up = tmux.get_selected_row()
+    assert after_up is not None and after_up.startswith("[2] up_a @"), (
+        f"Arrow up should select '[2] up_a', got '{after_up}'"
+    )
 
     tmux.press_enter()
-    time.sleep(1.0)
 
-    final_session = tmux.get_current_session()
-    assert final_session in {"up_a", "up_b", "up_c"}, (
-        f"Expected to land in one of up_* sessions, got {final_session}"
+    assert tmux.wait_for_session_switch("up_a", timeout=4), (
+        f"Enter should switch to up_a. Current: {tmux.get_current_session()}"
     )
 
 

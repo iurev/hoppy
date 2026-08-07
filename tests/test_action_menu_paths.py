@@ -16,17 +16,33 @@ def test_action_menu_shows_all_options(tmux):
 
 
 def test_action_menu_cancel_does_nothing(tmux):
+    """Picking '[cancel]' in the action menu ends the run at once.
+
+    Breaks if: the action menu does not render, if '[cancel]' stops ending the
+    run (the session selector would open next), if the client moves, or if the
+    exit code is not 0.
+    """
     before = tmux.get_current_session()
 
     tmux.run_command("/app/session-zx")
-    time.sleep(1.0)
+    assert tmux.wait_for_text("Select an action.", timeout=6), (
+        f"Action menu did not render. Content:\n{tmux.get_output()}"
+    )
+
     tmux.send_keys("cancel")
     time.sleep(0.5)
     tmux.press_enter()
-    time.sleep(0.5)
+
+    assert tmux.wait_for_fzf_gone(), "fzf still running after picking [cancel]"
+
+    content = tmux.get_output()
+    assert "Select target session" not in content, (
+        f"[cancel] opened the switch list instead of exiting. Content:\n{content}"
+    )
 
     after = tmux.get_current_session()
     assert after == before, f"Session changed from {before} to {after}"
+    assert tmux.last_exit_code() == 0, "[cancel] must exit 0"
 
 
 def test_action_menu_selects_switch_then_switches(tmux, create_sessions):

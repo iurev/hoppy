@@ -102,8 +102,19 @@ def test_kill_multiple_sessions_with_tab(tmux, create_sessions):
     tmux.assert_session_exists("keep_c")
 
 
-def test_detach_action_keeps_target_session_present(tmux):
+def test_detach_action_detaches_the_client(tmux):
+    """`detach` must really detach a client, and must NOT kill the session.
+
+    Breaks if: `tmux detach` is not run (the client stays attached), if the
+    attached-session list stops showing the current session as a pickable row,
+    or if detach starts killing the session instead.
+    (Only checking that the session still exists could never fail: detaching
+    never removes a session.)
+    """
     tmux.assert_session_exists("test_session")
+    assert "test_session" in tmux.get_attached_sessions(), (
+        f"No client attached before detach. Clients: {tmux.get_attached_sessions()}"
+    )
 
     tmux.run_command("/app/session-zx detach")
     time.sleep(1.5)
@@ -111,6 +122,9 @@ def test_detach_action_keeps_target_session_present(tmux):
     tmux.send_keys("test_session")
     time.sleep(0.5)
     tmux.press_enter()
-    time.sleep(1.5)
+    time.sleep(1.0)
 
+    assert tmux.wait_for_client_detached("test_session", timeout=5), (
+        f"Client is still attached. Clients: {tmux.get_attached_sessions()}"
+    )
     tmux.assert_session_exists("test_session")

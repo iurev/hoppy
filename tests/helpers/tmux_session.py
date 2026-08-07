@@ -1,8 +1,13 @@
 import os
 import re
+import subprocess
 import time
 
 import pexpect
+
+# The block fzf draws left of the row under the cursor. capture-pane keeps it,
+# so it tells us WHICH row is selected, not only that something redrew.
+FZF_POINTER = "▌"
 
 
 class TmuxSession:
@@ -265,3 +270,96 @@ class TmuxSession:
             "current_session": self.get_current_session(),
             "sessions": self.get_all_sessions(),
         }
+
+    # Proof that a selector really opened
+
+    def fzf_running(self):
+        """True while an fzf process is alive.
+
+        This is the only way to prove a POPUP selector opened: capture-pane
+        sees the shell under the popup, never the popup itself.
+        """
+        result = subprocess.run(
+            ["pgrep", "-x", "fzf"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return result.returncode == 0
+
+    def wait_for_fzf_process(self, timeout=8):
+        """Poll until an fzf process exists. Returns True if it appeared."""
+        start = time.time()
+        while time.time() - start < timeout:
+            if self.fzf_running():
+                time.sleep(0.5)  # let fzf finish its first draw
+                return True
+            time.sleep(0.2)
+        return False
+
+    def wait_for_fzf_gone(self, timeout=8):
+        """Poll until no fzf process is left. Returns True if it ended."""
+        start = time.time()
+        while time.time() - start < timeout:
+            if not self.fzf_running():
+                return True
+            time.sleep(0.2)
+        return False
+
+    def get_selected_row(self):
+        """Return the fzf row under the cursor, without the pointer block.
+
+        Returns None when no row is selected (or no fzf on screen).
+        """
+        for line in self.strip_ansi(self.get_output()).split("\n"):
+            if line.startswith(FZF_POINTER):
+                return line[len(FZF_POINTER):].strip()
+        return None
+
+    # Client state
+
+    def get_attached_sessions(self):
+        """Return the session name of every attached client."""
+        result = os.popen("tmux list-clients -F '#{session_name}'").read().strip()
+        if not result:
+            return []
+        return result.split("\n")
+
+    def wait_for_client_detached(self, session_name, timeout=5):
+        """Poll until no client is attached to session_name."""
+        start = time.time()
+        while time.time() - start < timeout:
+            if session_name not in self.get_attached_sessions():
+                return True
+            time.sleep(0.2)
+        return False
+
+    def wait_for_client_message(self, text, timeout=6):
+        """Wait for text drawn by the tmux CLIENT, e.g. `tmux display-message`.
+
+        capture-pane cannot see such a message: tmux draws it over the status
+        line, not inside the pane. pexpect reads the client terminal, so it can.
+        """
+        try:
+            self.process.expect(re.escape(text), timeout=timeout)
+            return True
+        except (pexpect.TIMEOUT, pexpect.EOF):
+            return False
+
+    def last_exit_code(self, timeout=5):
+        """Return the exit code of the last command the pane shell ran.
+
+        A bare Enter goes first. Right after Escape the terminal may still hold
+        one escape byte, and it would eat the first letter we type.
+        """
+        marker = "ZXEXIT"
+        self.press_enter()
+        time.sleep(0.4)
+        self.run_command(f"echo {marker}=$?")
+
+        start = time.time()
+        while time.time() - start < timeout:
+            found = re.findall(rf"{marker}=(\d+)", self.get_output())
+            if found:
+                return int(found[-1])
+            time.sleep(0.2)
+        return None

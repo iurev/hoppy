@@ -1,21 +1,65 @@
-"""Test that session-zx script executes correctly."""
+"""Test that the session-zx binary executes correctly."""
 import os
+import re
+import subprocess
 import time
+
 import pexpect
 
+ANSI = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
-def test_script_exists():
-    """Verify the script file exists."""
-    assert os.path.exists("session-zx")
+# The action menu of SPEC §3.1, in order.
+MENU_ITEMS = ["switch", "new", "rename", "detach", "kill", "[cancel]"]
+MENU_HEADER = "Select an action."
 
 
-def test_script_is_executable():
-    """Verify the script has execute permissions."""
-    assert os.access("session-zx", os.X_OK)
+def drain(proc, seconds=2.5):
+    """Read everything the process draws for `seconds`. Returns plain text.
+
+    fzf paints the whole screen, so one expect() call only sees a fragment.
+    """
+    buf = ""
+    end = time.time() + seconds
+    while time.time() < end:
+        try:
+            buf += proc.read_nonblocking(size=8192, timeout=0.2)
+        except (pexpect.TIMEOUT, pexpect.EOF):
+            time.sleep(0.05)
+    return ANSI.sub("", buf)
+
+
+def test_binary_exists_and_rejects_unknown_action():
+    """Smoke test: the file is there, it runs, and it validates its action.
+
+    Breaks if: the build is missing, the file loses its execute bit, or
+    assertValidAction stops rejecting an unknown action with exit 1 and the
+    SPEC §2.1 message.
+    """
+    assert os.path.exists("session-zx"), "binary 'session-zx' was not built"
+    assert os.access("session-zx", os.X_OK), "binary 'session-zx' is not executable"
+
+    result = subprocess.run(
+        ["./session-zx", "no-such-action"],
+        capture_output=True, text=True, timeout=15,
+    )
+
+    assert result.returncode == 1, (
+        f"Unknown action must exit 1, got {result.returncode}. stderr: {result.stderr}"
+    )
+    assert "Invalid action: no-such-action" in result.stderr, (
+        f"Missing the invalid-action error. stderr: {result.stderr}"
+    )
+    assert "Must be one of: switch, new, rename, detach, kill" in result.stderr, (
+        f"Missing the list of valid actions. stderr: {result.stderr}"
+    )
 
 
 def test_script_runs_without_error():
-    """Test that script can be executed without crashing."""
+    """Test that script can be executed without crashing.
+
+    Breaks if: the binary crashes on start, never shows fzf, or hangs after
+    Escape (for example when a child process keeps the pty open).
+    """
     # Run the script and immediately send ESC to cancel
     proc = pexpect.spawn("./session-zx", encoding='utf-8', timeout=10)
 
@@ -41,27 +85,32 @@ def test_script_runs_without_error():
 
 
 def test_script_shows_action_menu():
-    """Test that script shows the action menu when run without arguments."""
+    """The menu shown with no argument holds the six items of SPEC §3.1.
+
+    Breaks if: an item is renamed, dropped or added, if the header text
+    changes, or if cancelling the menu stops exiting 0.
+    """
     proc = pexpect.spawn("./session-zx", encoding='utf-8', timeout=10)
 
     try:
-        # Wait for action menu header or prompt
-        proc.expect(r'>', timeout=5)
-        time.sleep(0.2)
+        screen = drain(proc, 2.5)
 
-        # Capture output
-        output = proc.before + proc.after
+        assert MENU_HEADER in screen, (
+            f"Action menu header missing. Screen:\n{screen}"
+        )
+        for item in MENU_ITEMS:
+            assert item in screen, (
+                f"Menu item '{item}' missing from the action menu. Screen:\n{screen}"
+            )
 
         # Send ESC to cancel
         proc.send('\x1b')
-        time.sleep(0.2)
-
-        proc.expect(pexpect.EOF, timeout=2)
+        proc.expect(pexpect.EOF, timeout=3)
         proc.close()
 
-        # Verify we saw something that looks like a menu
-        assert '>' in output, "No fzf prompt found"
-
-    except pexpect.TIMEOUT:
-        proc.close(force=True)
-        raise AssertionError("Script did not show action menu in time")
+        assert proc.exitstatus == 0, (
+            f"Cancelling the action menu must exit 0, got {proc.exitstatus}"
+        )
+    finally:
+        if proc.isalive():
+            proc.close(force=True)

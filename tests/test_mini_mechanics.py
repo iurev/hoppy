@@ -1,86 +1,101 @@
-"""Mini-tests to verify testing infrastructure works.
+"""Mini-tests that prove the test rig AND the product work together.
 
-These tests document what works and what doesn't when testing
-tmux popups, fzf, and pexpect together. Keep them in the codebase.
+Each one drives the real binary. If the binary stops working, the test fails.
 """
 import os
+import re
 import time
 
 
 def test_pexpect_can_reach_fzf_in_popup(tmux, create_sessions):
-    """Prove that pexpect keys reach fzf inside a tmux popup."""
+    """Prove that pexpect keys reach fzf inside a tmux popup.
+
+    Breaks if: the popup never opens (no fzf process starts), or the keys
+    pexpect sends do not reach fzf, so Enter does not switch to dummy_target.
+    """
     create_sessions("dummy_target")
 
     # Run popup-switch via pexpect
     tmux.send_keys("/app/session-zx popup-switch")
     tmux.press_enter()
-    time.sleep(1.5)
 
-    # Type some characters — if pexpect reaches fzf, no crash happens
+    assert tmux.wait_for_fzf_process(), "popup-switch did not start fzf"
+
+    # Type a query, then accept it. Only real keys can select a row.
     tmux.send_keys("dummy")
     time.sleep(0.5)
+    tmux.press_enter()
 
-    # Press Escape to close popup
-    tmux.press_escape()
-    time.sleep(0.5)
-
-    # Session should still exist and client should stay in test_session.
-    sessions = tmux.get_all_sessions()
-    assert "test_session" in sessions, f"test_session missing. Sessions: {sessions}"
-    assert tmux.get_current_session() == "test_session"
+    assert tmux.wait_for_session_switch("dummy_target", timeout=4), (
+        f"Keys did not reach fzf in the popup. Current: {tmux.get_current_session()}"
+    )
+    tmux.assert_session_exists("test_session")
 
 
 def test_capture_pane_during_popup(tmux, create_sessions):
-    """Document what capture-pane returns when a popup is open.
+    """Document what capture-pane returns while a popup is open.
 
     Expectation: capture-pane sees the shell UNDER the popup, not popup content.
-    This test logs the result so we know what to expect in real tests.
+
+    Breaks if: the popup does not open (no fzf process), or capture-pane starts
+    returning the popup overlay, which would silently change what every popup
+    test can assert.
     """
     create_sessions("cap_target")
 
     # Run popup-switch
     tmux.send_keys("/app/session-zx popup-switch")
     tmux.press_enter()
-    time.sleep(1.5)
 
-    # Try capture-pane while popup is open
+    assert tmux.wait_for_fzf_process(), "popup-switch did not start fzf"
+
+    # Try capture-pane while the popup is open
     content = tmux.get_pane_content("test_session")
 
     # Close popup
     tmux.press_escape()
-    time.sleep(0.5)
+    assert tmux.wait_for_fzf_gone(), "fzf still runs after Escape"
 
-    # We just log; we expect the shell pane, not fzf content
     print(f"\n--- capture-pane during popup ---\n{content}\n--- end ---")
 
-    # capture-pane should show underlying shell command, not popup list content.
-    assert "popup-switch" in content, "Underlying shell command not captured."
+    # capture-pane must show the shell pane, not the popup list.
     assert "Select target session" not in content, \
-        "capture-pane unexpectedly includes popup overlay content."
+        "capture-pane unexpectedly includes the popup header."
+    assert "cap_target @" not in content, \
+        "capture-pane unexpectedly includes a popup session row."
+    tmux.assert_current_session("test_session")
 
 
-def test_session_detection_via_list_clients(tmux, create_sessions):
-    """Confirm that 'tmux list-clients' correctly reports attached session."""
+def test_switch_from_line_moves_the_client(tmux, create_sessions):
+    """Drive the Ctrl+N preview helper straight from the command line.
+
+    `switch-from-line` strips the '[N] ' prefix and the ' @ ...' suffix, writes
+    the debounce state, and a detached child then switches the client (SPEC
+    §3.5, §7).
+
+    Breaks if: the row parsing changes, the debounce child is not spawned, or
+    the delayed switch stops calling `tmux switch-client`.
+    """
     create_sessions("detect_me")
+    tmux.assert_current_session("test_session")
 
-    # We start attached to test_session
-    current = tmux.get_current_session()
-    assert current == "test_session", f"Expected test_session, got {current}"
+    os.system('/app/session-zx switch-from-line "[2] detect_me @ 1 windows"')
 
-    # Switch client via raw tmux command
-    os.system("tmux switch-client -t detect_me")
-    time.sleep(0.5)
-
-    current = tmux.get_current_session()
-    assert current == "detect_me", f"Expected detect_me, got {current}"
+    assert tmux.wait_for_session_switch("detect_me", timeout=5), (
+        f"switch-from-line did not move the client. "
+        f"Current: {tmux.get_current_session()}"
+    )
 
 
 def test_send_keys_via_pexpect_reaches_fzf(tmux, create_sessions):
-    """Prove pexpect can type into fzf running directly (not in popup).
+    """Prove pexpect can type into fzf running directly (not in a popup).
 
     We use 'switch' (not popup-switch) so capture-pane can see fzf content.
+
+    Breaks if: fzf never lists the session rows, or typing stops filtering them.
+    The matching row must stay on screen and the other row must go.
     """
-    create_sessions("visible_sess")
+    create_sessions("visible_sess", "hidden_sess")
 
     # Run switch directly (no popup)
     tmux.run_command("/app/session-zx switch")
@@ -90,12 +105,15 @@ def test_send_keys_via_pexpect_reaches_fzf(tmux, create_sessions):
     tmux.send_keys("visible")
     time.sleep(0.5)
 
-    # Capture pane — fzf content should be visible
-    content = tmux.get_output()
+    content = tmux.strip_ansi(tmux.get_output())
     print(f"\n--- pane after typing 'visible' ---\n{content}\n--- end ---")
 
-    # fzf should show filtered results containing "visible_sess"
-    assert "visible" in content, f"Filter text not visible in pane. Content:\n{content}"
+    assert re.search(r"visible_sess @ \d+ windows", content), (
+        f"Matching session row not shown by fzf. Content:\n{content}"
+    )
+    assert "hidden_sess @" not in content, (
+        f"fzf did not filter out the non-matching row. Content:\n{content}"
+    )
 
     # Cleanup: press Escape to exit fzf
     tmux.press_escape()
@@ -103,29 +121,33 @@ def test_send_keys_via_pexpect_reaches_fzf(tmux, create_sessions):
 
 
 def test_arrow_keys_work_in_fzf(tmux, create_sessions):
-    """Prove arrow keys navigate fzf items when running switch directly."""
+    """Prove arrow keys move the fzf cursor to the NEXT row, by name.
+
+    Rows are [1] test_session (current, pinned), [2] arrow_a, [3] arrow_b.
+
+    Breaks if: the arrow key stops moving the cursor, the current session stops
+    being pinned to [1], or the number prefixes disappear.
+    """
     create_sessions("arrow_a", "arrow_b")
 
     # Use --reverse so ArrowDown can move from top row to next row.
     tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
     time.sleep(1.5)
 
-    # Capture initial state
-    content_before = tmux.get_output()
+    before = tmux.get_selected_row()
+    assert before is not None, f"No fzf cursor on screen:\n{tmux.get_output()}"
+    assert before.startswith("[1] test_session @"), (
+        f"Cursor should start on '[1] test_session', got '{before}'"
+    )
 
-    # Press arrow down
     tmux.press_arrow_down()
-    time.sleep(0.3)
+    time.sleep(0.4)
 
-    # Capture after navigation
-    content_after = tmux.get_output()
-
-    print(f"\n--- before arrow ---\n{content_before}\n--- after arrow ---\n{content_after}\n--- end ---")
-
-    # Both captures should have content (fzf is running)
-    assert len(content_before.strip()) > 0, "No content before arrow"
-    assert len(content_after.strip()) > 0, "No content after arrow"
-    assert content_before != content_after, "Arrow key did not change fzf state."
+    after = tmux.get_selected_row()
+    assert after is not None, f"No fzf cursor after arrow:\n{tmux.get_output()}"
+    assert after.startswith("[2] arrow_a @"), (
+        f"Arrow down should select '[2] arrow_a', got '{after}'"
+    )
 
     # Cleanup
     tmux.press_escape()
