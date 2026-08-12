@@ -2,6 +2,7 @@
 #
 #   docker compose run --rm build            # compile ./session-zx
 #   docker compose run --rm test             # run the 43 pytest tests
+#   docker compose run --rm test-record      # same tests + .cast recordings
 #   docker compose run --rm build go test ./...   # Go unit tests
 #
 services:
@@ -15,6 +16,25 @@ services:
     environment:
       - TERM=xterm-256color
       - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+    command: pytest -v
+
+  # Same as `test`, but records each test to test_output/casts/<test>.cast.
+  # This is the only way to SEE the fzf popup: asciinema owns the tmux client
+  # pty. Recording is off in the `test` service and stays off by default.
+  #   docker compose run --rm test-record
+  #   asciinema play test_output/casts/<name>.cast
+  test-record:
+    build:
+      context: .
+      target: test
+    volumes:
+      - .:/app
+    environment:
+      - TERM=xterm-256color
+      - PYTHONUNBUFFERED=1
+      - RECORD_CAST=1
     stdin_open: true
     tty: true
     command: pytest -v

@@ -1,11 +1,29 @@
 """Pytest fixtures and configuration for integration tests."""
 import os
+import re
 import shutil
 import time
 
 import pytest
 
 from .helpers.tmux_session import TmuxSession
+
+# Where recordings land. Bind-mounted, so they show up on the host too.
+CAST_DIR = "/app/test_output/casts"
+
+
+def _cast_path(request):
+    """Return the .cast path for this test, or None when recording is off.
+
+    Recording is OFF unless RECORD_CAST is set to something other than
+    "" or "0". Use `docker compose run --rm test-record`.
+    """
+    if os.environ.get("RECORD_CAST", "") in ("", "0"):
+        return None
+
+    # nodeid is like "tests/test_x.py::test_y[param]". Make it a safe filename.
+    name = re.sub(r"[^A-Za-z0-9]+", "_", request.node.nodeid).strip("_")
+    return os.path.join(CAST_DIR, f"{name}.cast")
 
 
 @pytest.fixture(autouse=True)
@@ -20,9 +38,9 @@ def cleanup_all_sessions():
 
 
 @pytest.fixture
-def tmux():
+def tmux(request):
     """Create a tmux session for testing."""
-    session = TmuxSession(session_name="test_session")
+    session = TmuxSession(session_name="test_session", cast_path=_cast_path(request))
     session.launch()
 
     yield session

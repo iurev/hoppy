@@ -40,6 +40,15 @@ RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION
     && chmod +x /usr/local/bin/fzf \
     && fzf --version
 
+# Pinned asciinema (~8 MB static musl binary, no runtime deps).
+# It is ONLY used when RECORD_CAST=1. A normal test run never starts it.
+# See ARCHITECTURE.md "Recording a test run".
+ARG ASCIINEMA_VERSION=3.2.1
+RUN curl -fsSL -o /usr/local/bin/asciinema \
+      "https://github.com/asciinema/asciinema/releases/download/v${ASCIINEMA_VERSION}/asciinema-x86_64-unknown-linux-musl" \
+    && chmod +x /usr/local/bin/asciinema \
+    && asciinema --version
+
 # Set working directory
 WORKDIR /app
 

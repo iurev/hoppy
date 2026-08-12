@@ -199,6 +199,46 @@ Why the binary must be `/app/session-zx` and nowhere else: `tests/conftest.py:37
 (SPEC §0.1). Move the binary and that cleanup silently stops working, and ordering tests go
 flaky. See SPEC §0.55.
 
+### 4.1 Recording a test run (optional, OFF by default)
+
+You cannot watch the fzf popup with `tmux capture-pane`. A popup is a **per-client
+overlay**, so it is not in any pane. And you must never attach a second tmux client to
+look: a second client still would not see the overlay, and it can make the binary's
+`display-popup` open on the *wrong* client, because tmux picks the target by last activity.
+
+The only terminal that sees the popup is the pty of the tmux client that `pexpect` owns.
+So we record that pty. When recording is on, `TmuxSession.launch()` wraps the tmux command:
+
+```
+asciinema rec -q --overwrite -c "tmux new-session -s test_session ..." <file>.cast
+```
+
+asciinema owns the inner pty, writes every byte to the `.cast` file and passes it through,
+so `pexpect` and `expect()` keep working. No second tmux client is added.
+
+```bash
+# record every test (adds ~0 config; RECORD_CAST=1 is set by the service)
+docker compose run --rm test-record
+
+# record one test
+docker compose run --rm test-record pytest tests/test_capital_switch.py -q
+
+# play a recording back, on the host
+asciinema play test_output/casts/tests_test_capital_switch_py_test_capital_switch_basic.cast
+```
+
+Facts:
+
+| Item | Value |
+|---|---|
+| Switch | env var `RECORD_CAST=1`. Unset, `""` or `0` means no recording and no asciinema process at all. |
+| Files | one per test, `test_output/casts/<nodeid>.cast`, name taken from the pytest node id. `test_output/` is git-ignored. |
+| Format | asciicast v3 (asciinema 3.2.1, pinned in the `Dockerfile`, ~8 MB static binary) |
+| Scope | only tests that use the `tmux` fixture. Tests that spawn their own process are not recorded. |
+| Cost | ~4:13 → ~5:12 for the full suite (+23%). asciinema asks the outer terminal about itself and waits ~1s for a reply pexpect never sends, so each recorded launch costs about one extra second. |
+
+This is a debugging aid, not a product feature. The `test` service is unchanged.
+
 ---
 
 ## 5. Implementation order

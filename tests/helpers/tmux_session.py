@@ -1,5 +1,6 @@
 import os
 import re
+import shlex
 import subprocess
 import time
 
@@ -13,10 +14,14 @@ FZF_POINTER = "▌"
 class TmuxSession:
     """Playwright-like API for tmux session testing."""
 
-    def __init__(self, session_name="test_session", width=120, height=30):
+    def __init__(self, session_name="test_session", width=120, height=30,
+                 cast_path=None):
         self.session_name = session_name
         self.width = width
         self.height = height
+        # Optional .cast file. None (the default) means no recording at all:
+        # nothing extra is started and the test runs exactly as before.
+        self.cast_path = cast_path
         self.process = None
         self.default_timeout = 10
 
@@ -27,11 +32,40 @@ class TmuxSession:
 
         # Start new tmux session
         cmd = f"tmux new-session -s {self.session_name} -x {self.width} -y {self.height}"
+
+        if self.cast_path:
+            # Record the ONE terminal that can see a display-popup: the pty of
+            # this tmux client. asciinema owns that pty, writes every byte to
+            # the .cast file and passes it through, so pexpect still works.
+            # It adds NO second tmux client, which would break the popup.
+            os.makedirs(os.path.dirname(self.cast_path), exist_ok=True)
+            cmd = (
+                f"asciinema rec -q --overwrite "
+                f"-c {shlex.quote(cmd)} {shlex.quote(self.cast_path)}"
+            )
+
         self.process = pexpect.spawn(cmd, encoding='utf-8', timeout=self.default_timeout)
+
+        if self.cast_path:
+            # asciinema asks the outer terminal about itself and waits ~1s for
+            # an answer that pexpect never sends. So the tmux client attaches
+            # about 1s later than normal (measured: 1.05s vs 0.07s). Without
+            # this wait every recorded test would start before its client
+            # exists. Not needed, and not run, when recording is off.
+            self._wait_for_client_attached(timeout=10)
 
         # Wait for shell prompt
         time.sleep(0.5)
         return self
+
+    def _wait_for_client_attached(self, timeout=10):
+        """Poll until a tmux client is attached to our session."""
+        start = time.time()
+        while time.time() - start < timeout:
+            if self.session_name in self.get_attached_sessions():
+                return True
+            time.sleep(0.05)
+        return False
 
     def run_command(self, cmd):
         """Execute command in tmux session."""
