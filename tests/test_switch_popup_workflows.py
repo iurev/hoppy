@@ -14,24 +14,33 @@ DEBOUNCE_WAIT = 1.2
 
 
 def test_popup_switch_by_typing_full_name(tmux, create_sessions):
-    create_sessions("target_sess")
-    tmux.assert_current_session("test_session")
+    """Typing a whole name, spaces and all, picks that session.
+
+    The name carries NO digit on purpose: in the `switch` list 1-9 are bound to
+    "quick switch" (SPEC §3.11), so a digit in the query would accept a row
+    instead of filtering.
+    """
+    create_sessions("Sudo Make Me A Sandwich")
+    tmux.assert_current_session("Destruction of the Universe")
 
     run_popup_switch(tmux)
-    type_query_and_accept(tmux, "target_sess")
+    # A space is fzf's AND separator, so this filters on five terms at once.
+    # Only "Sudo Make Me A Sandwich" holds them all.
+    type_query_and_accept(tmux, "Sudo Make Me A Sandwich")
 
-    assert tmux.wait_for_session_switch("target_sess", timeout=3), (
-        f"Did not switch to target_sess. Current: {tmux.get_current_session()}"
+    assert tmux.wait_for_session_switch("Sudo Make Me A Sandwich", timeout=3), (
+        f"Did not switch to 'Sudo Make Me A Sandwich'. "
+        f"Current: {tmux.get_current_session()}"
     )
 
 
 def test_popup_switch_by_partial_name(tmux, create_sessions):
-    create_sessions("alpha_session")
+    create_sessions("schrodingers_cat")
 
     run_popup_switch(tmux)
-    type_query_and_accept(tmux, "alpha")
+    type_query_and_accept(tmux, "schrod")
 
-    assert tmux.wait_for_session_switch("alpha_session", timeout=3), (
+    assert tmux.wait_for_session_switch("schrodingers_cat", timeout=3), (
         f"Did not switch by partial name. Current: {tmux.get_current_session()}"
     )
 
@@ -43,25 +52,25 @@ def test_popup_switch_escape_cancels(tmux, create_sessions):
     session"), if Escape stops closing the selector, if a switch happens
     anyway, or if a cancel stops exiting 0.
     """
-    create_sessions("other_one")
-    tmux.assert_current_session("test_session")
+    create_sessions("KDE_FreeBsd")
+    tmux.assert_current_session("Destruction of the Universe")
 
     run_popup_switch(tmux)
     assert tmux.wait_for_fzf_process(), "popup selector did not open"
 
-    tmux.send_keys("other_one")
+    tmux.send_keys("KDE_FreeBsd")
     time.sleep(0.5)
     tmux.press_escape()
 
     assert tmux.wait_for_fzf_gone(), "selector still open after Escape"
-    tmux.assert_current_session("test_session")
+    tmux.assert_current_session("Destruction of the Universe")
     assert tmux.last_exit_code() == 0, "cancelling the popup must exit 0"
     assert read_frecency() == {}, "a cancel must not record frecency"
 
 
 def test_popup_switch_ctrl_n_then_enter_confirms_target(tmux, create_sessions):
-    create_sessions("arrow_target")
-    tmux.assert_current_session("test_session")
+    create_sessions("Tabs vs Spaces")
+    tmux.assert_current_session("Destruction of the Universe")
 
     configure_popup_env(reverse=True)
 
@@ -69,17 +78,17 @@ def test_popup_switch_ctrl_n_then_enter_confirms_target(tmux, create_sessions):
     tmux.press_ctrl_n()
     time.sleep(1.0)
 
-    tmux.assert_current_session("arrow_target")
+    tmux.assert_current_session("Tabs vs Spaces")
 
     tmux.press_enter()
     time.sleep(1.0)
-    assert tmux.wait_for_session_switch("arrow_target", timeout=3), (
-        f"Should stay on arrow_target after Enter. Current: {tmux.get_current_session()}"
+    assert tmux.wait_for_session_switch("Tabs vs Spaces", timeout=3), (
+        f"Should stay on 'Tabs vs Spaces' after Enter. Current: {tmux.get_current_session()}"
     )
 
 
 def test_popup_switch_ctrl_n_preview_moves_client(tmux, create_sessions):
-    create_sessions("preview_a", "preview_b")
+    create_sessions("Heisenbug Nest", "Segfault Alley")
     configure_popup_env(debounce_ms=DEBOUNCE_MS, reverse=True)
 
     run_popup_switch(tmux)
@@ -87,24 +96,26 @@ def test_popup_switch_ctrl_n_preview_moves_client(tmux, create_sessions):
     time.sleep(DEBOUNCE_WAIT)
 
     after = tmux.get_current_session()
-    assert after != "test_session", f"Expected preview to move client, still in {after}"
+    assert after != "Destruction of the Universe", (
+        f"Expected preview to move client, still in {after}"
+    )
 
     tmux.press_escape()
     time.sleep(0.5)
 
 
 def test_popup_switch_ctrl_p_preview_returns_to_current(tmux, create_sessions):
-    create_sessions("preview_p_target")
+    create_sessions("Bikeshed Committee")
     configure_popup_env(debounce_ms=DEBOUNCE_MS, reverse=True)
 
     run_popup_switch(tmux)
     tmux.press_ctrl_n()
     time.sleep(DEBOUNCE_WAIT)
-    tmux.assert_current_session("preview_p_target")
+    tmux.assert_current_session("Bikeshed Committee")
 
     tmux.press_ctrl_p()
     time.sleep(DEBOUNCE_WAIT)
-    tmux.assert_current_session("test_session")
+    tmux.assert_current_session("Destruction of the Universe")
 
     tmux.press_escape()
     time.sleep(0.5)
@@ -116,7 +127,7 @@ def test_popup_switch_ctrl_n_then_ctrl_p_last_target_wins(tmux, create_sessions)
     Breaks if: the popup never opens, or the debounce stops dropping the older
     token, so the Ctrl+N target switches in after Ctrl+P moved back.
     """
-    create_sessions("bounce_target")
+    create_sessions("Looking for 42")
     configure_popup_env(debounce_ms=DEBOUNCE_MS, reverse=True)
 
     run_popup_switch(tmux)
@@ -127,7 +138,7 @@ def test_popup_switch_ctrl_n_then_ctrl_p_last_target_wins(tmux, create_sessions)
     tmux.press_ctrl_p()
     time.sleep(DEBOUNCE_WAIT)
 
-    tmux.assert_current_session("test_session")
+    tmux.assert_current_session("Destruction of the Universe")
     tmux.press_escape()
     time.sleep(0.5)
 
@@ -138,7 +149,7 @@ def test_popup_switch_ctrl_n_then_escape_keeps_preview_target(tmux, create_sessi
     Breaks if: the popup never opens, if Ctrl+N stops moving the client (there
     would be no preview target to keep), or if Escape moves the client back.
     """
-    create_sessions("preview_target")
+    create_sessions("Turtles All The Way Down")
     configure_popup_env(debounce_ms=DEBOUNCE_MS, reverse=True)
 
     run_popup_switch(tmux)
@@ -147,8 +158,9 @@ def test_popup_switch_ctrl_n_then_escape_keeps_preview_target(tmux, create_sessi
     tmux.press_ctrl_n()
     time.sleep(DEBOUNCE_WAIT)
     preview_target = tmux.get_current_session()
-    assert preview_target == "preview_target", (
-        f"Ctrl+N should preview 'preview_target', client is on '{preview_target}'"
+    assert preview_target == "Turtles All The Way Down", (
+        f"Ctrl+N should preview 'Turtles All The Way Down', "
+        f"client is on '{preview_target}'"
     )
 
     tmux.press_escape()
@@ -161,7 +173,7 @@ def test_popup_switch_ctrl_n_then_escape_keeps_preview_target(tmux, create_sessi
 
 
 def test_popup_switch_backspace_correction(tmux, create_sessions):
-    create_sessions("banana")
+    create_sessions("Banana For Scale")
 
     run_popup_switch(tmux)
     tmux.send_keys("banxx")
@@ -172,8 +184,8 @@ def test_popup_switch_backspace_correction(tmux, create_sessions):
     tmux.press_enter()
     time.sleep(1.0)
 
-    assert tmux.wait_for_session_switch("banana", timeout=3), (
-        f"Did not switch to banana. Current: {tmux.get_current_session()}"
+    assert tmux.wait_for_session_switch("Banana For Scale", timeout=3), (
+        f"Did not switch to 'Banana For Scale'. Current: {tmux.get_current_session()}"
     )
 
 
@@ -183,8 +195,8 @@ def test_popup_switch_no_match_escape_keeps_current(tmux, create_sessions):
     Breaks if: the popup never opens, if the selector stays open after Escape,
     if the client moves anyway, or if the exit code is not 0.
     """
-    create_sessions("some_sess")
-    tmux.assert_current_session("test_session")
+    create_sessions("Ctrl_Alt_Elite")
+    tmux.assert_current_session("Destruction of the Universe")
 
     run_popup_switch(tmux)
     assert tmux.wait_for_fzf_process(), "popup selector did not open"
@@ -194,7 +206,7 @@ def test_popup_switch_no_match_escape_keeps_current(tmux, create_sessions):
     tmux.press_escape()
 
     assert tmux.wait_for_fzf_gone(), "selector still open after Escape"
-    tmux.assert_current_session("test_session")
+    tmux.assert_current_session("Destruction of the Universe")
     assert tmux.last_exit_code() == 0, "cancelling the popup must exit 0"
 
 
@@ -208,8 +220,8 @@ def test_popup_switch_no_match_enter_keeps_current(tmux, create_sessions):
     an empty selection starts a switch, or if fzf's exit code 1 leaks out as a
     non-zero exit code of our binary.
     """
-    create_sessions("some_sess")
-    tmux.assert_current_session("test_session")
+    create_sessions("Off By One Error")
+    tmux.assert_current_session("Destruction of the Universe")
 
     run_popup_switch(tmux)
     assert tmux.wait_for_fzf_process(), "popup selector did not open"
@@ -219,7 +231,7 @@ def test_popup_switch_no_match_enter_keeps_current(tmux, create_sessions):
     tmux.press_enter()
 
     assert tmux.wait_for_fzf_gone(), "selector still open after Enter"
-    tmux.assert_current_session("test_session")
+    tmux.assert_current_session("Destruction of the Universe")
     assert tmux.last_exit_code() == 0, "an empty selection must exit 0"
     assert read_frecency() == {}, "an empty selection must not record frecency"
 
@@ -229,49 +241,50 @@ def test_popup_switch_only_current_session_noop(tmux):
 
     The frecency record is the proof: it is written only after a SUCCESSFUL
     `tmux switch-client` (SPEC §5.3). A binary that did nothing would leave the
-    client on test_session too, but would write no record.
+    client on the same session too, but would write no record.
 
     Breaks if: the popup never opens, if the only row cannot be accepted, or if
     a successful switch stops recording frecency.
     """
-    tmux.assert_current_session("test_session")
+    tmux.assert_current_session("Destruction of the Universe")
 
     run_popup_switch(tmux)
     assert tmux.wait_for_fzf_process(), "popup selector did not open"
 
-    type_query_and_accept(tmux, "test_session")
+    type_query_and_accept(tmux, "Destruction of the Universe")
 
     assert tmux.wait_for_fzf_gone(), "selector still open after Enter"
-    tmux.assert_current_session("test_session")
-    assert wait_for_frecency_session("test_session"), (
+    tmux.assert_current_session("Destruction of the Universe")
+    assert wait_for_frecency_session("Destruction of the Universe"), (
         f"No frecency record for the accepted row. Frecency: {read_frecency()}"
     )
 
 
 def test_popup_switch_session_name_with_spaces(tmux, create_sessions):
-    create_sessions("my session")
+    create_sessions("Cosmic Rays Flipped My Bit")
 
     run_popup_switch(tmux)
-    type_query_and_accept(tmux, "my session")
+    type_query_and_accept(tmux, "Cosmic Rays Flipped My Bit")
 
-    assert tmux.wait_for_session_switch("my session", timeout=3), (
-        f"Did not switch to 'my session'. Current: {tmux.get_current_session()}"
+    assert tmux.wait_for_session_switch("Cosmic Rays Flipped My Bit", timeout=3), (
+        f"Did not switch to 'Cosmic Rays Flipped My Bit'. "
+        f"Current: {tmux.get_current_session()}"
     )
 
 
 def test_popup_switch_twice_consecutive(tmux, create_sessions):
-    create_sessions("first_dest", "second_dest")
+    create_sessions("Hello Darkness", "my_old_friend")
 
     run_popup_switch(tmux)
-    type_query_and_accept(tmux, "first_dest")
-    assert tmux.wait_for_session_switch("first_dest", timeout=3), (
+    type_query_and_accept(tmux, "Hello Darkness")
+    assert tmux.wait_for_session_switch("Hello Darkness", timeout=3), (
         f"First switch failed. Current: {tmux.get_current_session()}"
     )
 
     time.sleep(0.5)
 
     run_popup_switch(tmux)
-    type_query_and_accept(tmux, "second_dest")
-    assert tmux.wait_for_session_switch("second_dest", timeout=3), (
+    type_query_and_accept(tmux, "my_old_friend")
+    assert tmux.wait_for_session_switch("my_old_friend", timeout=3), (
         f"Second switch failed. Current: {tmux.get_current_session()}"
     )

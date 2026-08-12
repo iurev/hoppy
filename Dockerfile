@@ -90,3 +90,45 @@ COPY . .
 
 # Default command runs tests
 CMD ["pytest", "-v"]
+
+# =============================================================================
+# stage: media — .cast -> .gif -> animated .webp. Used by the compose "media"
+# service only. It is deliberately NOT part of the `test` stage: agg, Pillow
+# and the font package are needed once, when we cut a README demo, and would
+# otherwise sit in every test run.
+#
+#   docker compose run --rm media scripts/cast2webp.sh <cast-name>
+#
+# See ARCHITECTURE.md 4.2.
+# =============================================================================
+FROM python:3.11-slim AS media
+
+# agg renders text with a real font; the slim image ships none.
+# DejaVu Sans Mono is agg's last default-family fallback, so it always matches.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pinned agg (asciinema's official gif generator, static musl binary, no deps).
+# Installed exactly like asciinema above: released binary, not cargo.
+ARG AGG_VERSION=1.9.0
+RUN curl -fsSL -o /usr/local/bin/agg \
+      "https://github.com/asciinema/agg/releases/download/v${AGG_VERSION}/agg-x86_64-unknown-linux-musl" \
+    && chmod +x /usr/local/bin/agg \
+    && agg --version
+
+# Pinned Pillow. It does the GIF -> animated WebP step, and it is the reason
+# ffmpeg is not used here: ffmpeg rewrites every frame to a constant frame
+# rate, which destroys the pacing of a terminal recording. Pillow copies the
+# per-frame delays across unchanged.
+ARG PILLOW_VERSION=12.3.0
+RUN pip install --no-cache-dir "Pillow==${PILLOW_VERSION}" \
+    && python3 -c "import PIL; print('Pillow', PIL.__version__)"
+
+WORKDIR /app
+
+# No COPY: docker-compose bind-mounts the repo over /app, which is where both
+# the casts and the script live.
+CMD ["scripts/cast2webp.sh"]

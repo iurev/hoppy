@@ -4,6 +4,7 @@
 #   docker compose run --rm test             # run the 43 pytest tests
 #   docker compose run --rm test-record      # same tests + .cast recordings
 #   docker compose run --rm build go test ./...   # Go unit tests
+#   docker compose run --rm media scripts/cast2webp.sh <cast>...  # README demo
 #
 services:
   # The test harness. Python, pytest, tmux, pinned fzf. No Go, no Node.
@@ -38,6 +39,19 @@ services:
     stdin_open: true
     tty: true
     command: pytest -v
+
+  # Turns a recorded .cast into an animated WebP for the README.
+  # Separate image on purpose: agg + Pillow never enter the test image.
+  #   docker compose run --rm media scripts/cast2webp.sh <cast-name-without-.cast>
+  # Output: test_output/webp/<name>.webp (git-ignored).
+  media:
+    build:
+      context: .
+      target: media
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: scripts/cast2webp.sh
 
   # The Go toolchain. It compiles THROUGH the bind mount, so the binary lands
   # at ./session-zx on the host and at /app/session-zx in the test container.

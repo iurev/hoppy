@@ -8,10 +8,21 @@ Focuses on:
 """
 import os
 import re
+import shlex
 import time
 
 # A numbered row looks exactly like this (SPEC §4.1, §4.3).
 ROW_RE = re.compile(r"^\[(\d+)\] (.+) @ (\d+) windows$")
+
+
+def new_session(name):
+    """Start a detached session. Quoted: a name may hold spaces."""
+    os.system(f"tmux new-session -d -s {shlex.quote(name)}")
+
+
+def kill_session(name):
+    """Remove a session, quietly."""
+    os.system(f"tmux kill-session -t {shlex.quote(name)} 2>/dev/null")
 
 
 def run_script_reload():
@@ -32,8 +43,8 @@ def test_script_lists_sessions_correctly():
     (The old version only checked that '[' and ']' appeared somewhere, which
     the '[cancel]' row alone satisfied.)
     """
-    os.system("tmux new-session -d -s script_test_alpha")
-    os.system("tmux new-session -d -s script_test_beta")
+    new_session("Hitchhikers Guide")
+    new_session("Improbability Drive")
     time.sleep(0.5)
 
     try:
@@ -52,12 +63,12 @@ def test_script_lists_sessions_correctly():
             f"Number prefixes must be [1] then [2]. Rows: {rows}"
         )
         assert {m.group(2) for m in matches} == {
-            "script_test_alpha", "script_test_beta",
+            "Hitchhikers Guide", "Improbability Drive",
         }, f"Wrong session names. Rows: {rows}"
 
     finally:
-        os.system("tmux kill-session -t script_test_alpha 2>/dev/null")
-        os.system("tmux kill-session -t script_test_beta 2>/dev/null")
+        kill_session("Hitchhikers Guide")
+        kill_session("Improbability Drive")
 
 
 def test_script_shows_window_counts():
@@ -66,23 +77,23 @@ def test_script_shows_window_counts():
     Breaks if: the tmux format string stops asking for #{session_windows}, or
     the count is rendered differently.
     """
-    os.system("tmux new-session -d -s window_test")
+    new_session("Three Little Windows")
     time.sleep(0.3)
     # Add 2 more windows (total 3)
-    os.system("tmux new-window -t window_test")
-    os.system("tmux new-window -t window_test")
+    os.system(f"tmux new-window -t {shlex.quote('Three Little Windows')}")
+    os.system(f"tmux new-window -t {shlex.quote('Three Little Windows')}")
     time.sleep(0.3)
 
     try:
         output = run_script_reload()
 
-        # The output format is like "[1] window_test @ 3 windows"
-        assert "window_test @ 3 windows" in output, (
-            f"Expected 'window_test @ 3 windows' in output, got:\n{output}"
+        # The output format is like "[1] Three Little Windows @ 3 windows"
+        assert "Three Little Windows @ 3 windows" in output, (
+            f"Expected 'Three Little Windows @ 3 windows' in output, got:\n{output}"
         )
 
     finally:
-        os.system("tmux kill-session -t window_test 2>/dev/null")
+        kill_session("Three Little Windows")
 
 
 def test_special_characters_handling():
@@ -92,10 +103,10 @@ def test_special_characters_handling():
     the row is built.
     """
     # tmux converts dots to underscores, so we test what persists
-    names = ["test-dash", "test_underscore", "test with space"]
+    names = ["dash-of-salt", "snake_case_forever", "mind the gap"]
 
     for n in names:
-        os.system(f"tmux new-session -d -s '{n}'")
+        new_session(n)
     time.sleep(0.5)
 
     try:
@@ -107,7 +118,7 @@ def test_special_characters_handling():
 
     finally:
         for n in names:
-            os.system(f"tmux kill-session -t '{n}' 2>/dev/null")
+            kill_session(n)
 
 
 def test_reload_sessions_ends_with_cancel_row():
@@ -120,8 +131,8 @@ def test_reload_sessions_ends_with_cancel_row():
     Breaks if: the '[cancel]' row is dropped again, a '[current]' row appears,
     or a session goes missing from the list.
     """
-    os.system("tmux new-session -d -s current_one")
-    os.system("tmux new-session -d -s other_one")
+    new_session("Observer Effect")
+    new_session("Schrodingers Session")
     time.sleep(0.5)
 
     try:
@@ -135,10 +146,10 @@ def test_reload_sessions_ends_with_cancel_row():
         )
 
         names = {ROW_RE.match(row).group(2) for row in rows if ROW_RE.match(row)}
-        assert names == {"current_one", "other_one"}, (
+        assert names == {"Observer Effect", "Schrodingers Session"}, (
             f"Expected both sessions and nothing else. Rows: {rows}"
         )
 
     finally:
-        os.system("tmux kill-session -t current_one 2>/dev/null")
-        os.system("tmux kill-session -t other_one 2>/dev/null")
+        kill_session("Observer Effect")
+        kill_session("Schrodingers Session")

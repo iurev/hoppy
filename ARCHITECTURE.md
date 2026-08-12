@@ -239,6 +239,52 @@ Facts:
 
 This is a debugging aid, not a product feature. The `test` service is unchanged.
 
+### 4.2 Turning recordings into a README animation
+
+The `.cast` files from §4.1 are also the source of the demo animation. The path is
+`.cast` → GIF (`agg`) → animated WebP (Pillow):
+
+```bash
+# one clip -> test_output/webp/<name>.gif and .webp
+docker compose run --rm media scripts/cast2webp.sh \
+  tests_test_switch_popup_workflows_py_test_popup_switch_by_typing_full_name
+
+# the README demo: 4 clips, played one after another, in this order
+docker compose run --rm media scripts/cast2webp.sh \
+  tests_test_switch_popup_workflows_py_test_popup_switch_by_typing_full_name \
+  tests_test_switch_popup_workflows_py_test_popup_switch_ctrl_n_preview_moves_client \
+  tests_test_session_mutations_py_test_kill_multiple_sessions_with_tab \
+  tests_test_action_menu_paths_py_test_action_menu_selects_switch_then_switches
+# -> test_output/webp/demo-combined.webp   (691x490, ~27s, ~92 KB)
+```
+
+Give two or more casts and you also get the combined file. The clips are joined at
+the **frame** level, not at the `.cast` level: each cast is rendered by `agg` on its
+own, then Pillow appends the frames and their delays. All casts are 80x24, so the
+frames match; `scripts/gif2webp.py` fails loudly on a size mismatch instead of
+rescaling. Between clips it holds the closing screen for an extra `GAP_MS`, which is
+the beat that tells the viewer one workflow ended.
+
+Facts:
+
+| Item | Value |
+|---|---|
+| Image | separate `media` stage in the `Dockerfile`, and the `media` compose service. `agg` and Pillow never enter the `test` image. |
+| Tools | `agg` 1.9.0 (pinned, static musl binary, installed like asciinema), Pillow 12.3.0 (pinned) |
+| Script | `scripts/cast2webp.sh` (agg + pacing flags) calls `scripts/gif2webp.py` (Pillow) |
+| Output | `test_output/webp/` — git-ignored, like the casts |
+| Pacing | `IDLE=1.2` caps every pause; `SPEED=1.0`, because the fzf list has to stay readable. Override either on the command line. |
+| Beat | `GAP_MS=1000` on top of `agg --last-frame-duration 1`, so each clip ends on a 2s hold. |
+
+Why Pillow and not `ffmpeg` for the WebP step: `ffmpeg` re-times an animation to a
+constant frame rate. A terminal recording is the opposite of constant — a burst of
+frames while text appears, then a long hold — so flattening it destroys the pacing.
+Pillow copies each frame's own delay across unchanged.
+
+Known quirk: Pillow's WebP *reader* reports `duration` as 0 for every frame. The
+delays really are in the file (they are in the `ANMF` chunks, and browsers play them
+correctly); only the read-back is lossy. Do not "fix" a file based on that.
+
 ---
 
 ## 5. Implementation order

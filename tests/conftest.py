@@ -1,6 +1,7 @@
 """Pytest fixtures and configuration for integration tests."""
 import os
 import re
+import shlex
 import shutil
 import time
 
@@ -40,7 +41,8 @@ def cleanup_all_sessions():
 @pytest.fixture
 def tmux(request):
     """Create a tmux session for testing."""
-    session = TmuxSession(session_name="test_session", cast_path=_cast_path(request))
+    session = TmuxSession(session_name="Destruction of the Universe",
+                          cast_path=_cast_path(request))
     session.launch()
 
     yield session
@@ -68,8 +70,12 @@ def create_sessions():
     """Create multiple tmux sessions. Stamp each with an echo for identification."""
     def _create(*names):
         for name in names:
-            os.system(f"tmux new-session -d -s '{name}'")
-            os.system(f"tmux send-keys -t '{name}' 'echo IN_SESSION_{name}' Enter")
+            # shlex.quote, not bare '': a session name may hold spaces, and one
+            # of them holding a quote would otherwise splice the command.
+            quoted = shlex.quote(name)
+            os.system(f"tmux new-session -d -s {quoted}")
+            stamp = shlex.quote(f"echo IN_SESSION_{name}")
+            os.system(f"tmux send-keys -t {quoted} {stamp} Enter")
         time.sleep(0.3 * len(names))
         return list(names)
     yield _create

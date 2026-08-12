@@ -3,17 +3,20 @@ import time
 
 from .helpers.workflow import clear_query, write_session_name_to_fifo
 
+# The fixture session, spelled once.
+CURRENT = "Destruction of the Universe"
+
 
 def test_new_session_creation(tmux):
     tmux.run_command("/app/session-zx new")
     time.sleep(2.0)
 
-    write_session_name_to_fifo("fresh_session")
+    write_session_name_to_fifo("Hello_World_Again")
     time.sleep(1.5)
 
-    tmux.assert_session_exists("fresh_session")
-    assert tmux.wait_for_session_switch("fresh_session", timeout=3), (
-        f"Did not switch to fresh_session. Current: {tmux.get_current_session()}"
+    tmux.assert_session_exists("Hello_World_Again")
+    assert tmux.wait_for_session_switch("Hello_World_Again", timeout=3), (
+        f"Did not switch to Hello_World_Again. Current: {tmux.get_current_session()}"
     )
 
 
@@ -21,71 +24,83 @@ def test_rename_current_session(tmux):
     tmux.run_command("/app/session-zx rename")
     time.sleep(2.0)
 
-    write_session_name_to_fifo("renamed_sess")
+    write_session_name_to_fifo("Universe Restored")
     time.sleep(0.5)
 
-    tmux.send_keys("test_session")
+    tmux.send_keys(CURRENT)
     time.sleep(0.5)
     tmux.press_enter()
     time.sleep(1.0)
 
     sessions = tmux.get_all_sessions()
-    assert "renamed_sess" in sessions, f"renamed_sess not found. Sessions: {sessions}"
-    assert "test_session" not in sessions, f"test_session still exists. Sessions: {sessions}"
+    assert "Universe Restored" in sessions, (
+        f"'Universe Restored' not found. Sessions: {sessions}"
+    )
+    assert CURRENT not in sessions, f"'{CURRENT}' still exists. Sessions: {sessions}"
 
 
 def test_rename_other_session(tmux, create_sessions):
-    create_sessions("old_name")
+    create_sessions("Deprecated_Since_1999")
 
     tmux.run_command("/app/session-zx rename")
     time.sleep(2.0)
 
-    write_session_name_to_fifo("new_name")
+    write_session_name_to_fifo("Modern_Stack_2026")
     time.sleep(0.5)
 
-    tmux.send_keys("old_name")
+    tmux.send_keys("Deprecated_Since_1999")
     time.sleep(0.5)
     tmux.press_enter()
     time.sleep(1.0)
 
     sessions = tmux.get_all_sessions()
-    assert "new_name" in sessions, f"new_name not found. Sessions: {sessions}"
-    assert "old_name" not in sessions, f"old_name still exists. Sessions: {sessions}"
-    assert "test_session" in sessions, f"test_session missing. Sessions: {sessions}"
+    assert "Modern_Stack_2026" in sessions, (
+        f"'Modern_Stack_2026' not found. Sessions: {sessions}"
+    )
+    assert "Deprecated_Since_1999" not in sessions, (
+        f"'Deprecated_Since_1999' still exists. Sessions: {sessions}"
+    )
+    assert CURRENT in sessions, f"'{CURRENT}' missing. Sessions: {sessions}"
 
 
 def test_kill_action_removes_session(tmux, create_sessions):
-    create_sessions("kill_me", "keep_me")
+    create_sessions("Keep_Calm_And_Vim_On", "kill_it_with_fire")
 
     tmux.run_command("/app/session-zx kill")
     time.sleep(1.5)
 
-    tmux.send_keys("kill_me")
+    tmux.send_keys("kill_it")
     time.sleep(0.5)
     tmux.press_enter()
     time.sleep(1.0)
 
-    assert tmux.wait_for_session_gone("kill_me", timeout=3), (
-        f"kill_me still exists. Sessions: {tmux.get_all_sessions()}"
+    assert tmux.wait_for_session_gone("kill_it_with_fire", timeout=3), (
+        f"kill_it_with_fire still exists. Sessions: {tmux.get_all_sessions()}"
     )
-    tmux.assert_session_exists("keep_me")
+    tmux.assert_session_exists("Keep_Calm_And_Vim_On")
 
 
 def test_kill_multiple_sessions_with_tab(tmux, create_sessions):
-    create_sessions("kill_a", "kill_b", "keep_c")
+    """TAB marks two rows and Enter kills both, leaving the third alone.
+
+    Q14: `kill` deletes in REVERSE lexicographic order, so 'Goodbye Cruel
+    World' dies before 'Farewell My Segfault'. Both are gone either way, and
+    neither is the attached session, so the order changes nothing here.
+    """
+    create_sessions("Farewell My Segfault", "Goodbye Cruel World", "Immortal Snail")
 
     tmux.run_command("TMUX_FZF_OPTIONS='--multi' /app/session-zx kill")
     time.sleep(1.5)
 
-    tmux.send_keys("kill_a")
+    tmux.send_keys("goodbye")
     time.sleep(0.4)
     tmux.press_tab()
     time.sleep(0.2)
 
-    clear_query(tmux, len("kill_a"))
+    clear_query(tmux, len("goodbye"))
     time.sleep(0.2)
 
-    tmux.send_keys("kill_b")
+    tmux.send_keys("farewell")
     time.sleep(0.4)
     tmux.press_tab()
     time.sleep(0.2)
@@ -93,13 +108,15 @@ def test_kill_multiple_sessions_with_tab(tmux, create_sessions):
     tmux.press_enter()
     time.sleep(1.2)
 
-    assert tmux.wait_for_session_gone("kill_a", timeout=3), (
-        f"kill_a still exists after multi-select kill. Sessions: {tmux.get_all_sessions()}"
+    assert tmux.wait_for_session_gone("Goodbye Cruel World", timeout=3), (
+        f"'Goodbye Cruel World' still exists after multi-select kill. "
+        f"Sessions: {tmux.get_all_sessions()}"
     )
-    assert tmux.wait_for_session_gone("kill_b", timeout=3), (
-        f"kill_b still exists after multi-select kill. Sessions: {tmux.get_all_sessions()}"
+    assert tmux.wait_for_session_gone("Farewell My Segfault", timeout=3), (
+        f"'Farewell My Segfault' still exists after multi-select kill. "
+        f"Sessions: {tmux.get_all_sessions()}"
     )
-    tmux.assert_session_exists("keep_c")
+    tmux.assert_session_exists("Immortal Snail")
 
 
 def test_detach_action_detaches_the_client(tmux):
@@ -111,20 +128,20 @@ def test_detach_action_detaches_the_client(tmux):
     (Only checking that the session still exists could never fail: detaching
     never removes a session.)
     """
-    tmux.assert_session_exists("test_session")
-    assert "test_session" in tmux.get_attached_sessions(), (
+    tmux.assert_session_exists(CURRENT)
+    assert CURRENT in tmux.get_attached_sessions(), (
         f"No client attached before detach. Clients: {tmux.get_attached_sessions()}"
     )
 
     tmux.run_command("/app/session-zx detach")
     time.sleep(1.5)
 
-    tmux.send_keys("test_session")
+    tmux.send_keys(CURRENT)
     time.sleep(0.5)
     tmux.press_enter()
     time.sleep(1.0)
 
-    assert tmux.wait_for_client_detached("test_session", timeout=5), (
+    assert tmux.wait_for_client_detached(CURRENT, timeout=5), (
         f"Client is still attached. Clients: {tmux.get_attached_sessions()}"
     )
-    tmux.assert_session_exists("test_session")
+    tmux.assert_session_exists(CURRENT)

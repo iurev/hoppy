@@ -14,8 +14,8 @@ FZF_POINTER = "▌"
 class TmuxSession:
     """Playwright-like API for tmux session testing."""
 
-    def __init__(self, session_name="test_session", width=120, height=30,
-                 cast_path=None):
+    def __init__(self, session_name="Destruction of the Universe", width=120,
+                 height=30, cast_path=None):
         self.session_name = session_name
         self.width = width
         self.height = height
@@ -28,10 +28,16 @@ class TmuxSession:
     def launch(self):
         """Start a new tmux session."""
         # Kill existing session if it exists
-        os.system(f"tmux kill-session -t {self.session_name} 2>/dev/null")
+        os.system(f"tmux kill-session -t {shlex.quote(self.session_name)} 2>/dev/null")
 
-        # Start new tmux session
-        cmd = f"tmux new-session -s {self.session_name} -x {self.width} -y {self.height}"
+        # Start new tmux session. Built as an argv LIST, never as one string:
+        # a session name may hold spaces, and pexpect's own command splitter
+        # would tear it into several arguments.
+        new_session = [
+            "tmux", "new-session", "-s", self.session_name,
+            "-x", str(self.width), "-y", str(self.height),
+        ]
+        argv = new_session
 
         if self.cast_path:
             # Record the ONE terminal that can see a display-popup: the pty of
@@ -39,12 +45,15 @@ class TmuxSession:
             # the .cast file and passes it through, so pexpect still works.
             # It adds NO second tmux client, which would break the popup.
             os.makedirs(os.path.dirname(self.cast_path), exist_ok=True)
-            cmd = (
-                f"asciinema rec -q --overwrite "
-                f"-c {shlex.quote(cmd)} {shlex.quote(self.cast_path)}"
-            )
+            # asciinema runs -c through a shell, so THIS one must be shell text.
+            argv = [
+                "asciinema", "rec", "-q", "--overwrite",
+                "-c", shlex.join(new_session),
+                self.cast_path,
+            ]
 
-        self.process = pexpect.spawn(cmd, encoding='utf-8', timeout=self.default_timeout)
+        self.process = pexpect.spawn(
+            argv[0], argv[1:], encoding='utf-8', timeout=self.default_timeout)
 
         if self.cast_path:
             # asciinema asks the outer terminal about itself and waits ~1s for
@@ -134,7 +143,8 @@ class TmuxSession:
             raise RuntimeError("Session not launched. Call launch() first.")
 
         # Capture tmux pane content
-        output = os.popen(f"tmux capture-pane -t {self.session_name} -p").read()
+        output = os.popen(
+            f"tmux capture-pane -t {shlex.quote(self.session_name)} -p").read()
         return output
 
     def screenshot(self, filepath):
@@ -150,7 +160,7 @@ class TmuxSession:
             self.process.close(force=True)
 
         # Kill tmux session
-        os.system(f"tmux kill-session -t {self.session_name} 2>/dev/null")
+        os.system(f"tmux kill-session -t {shlex.quote(self.session_name)} 2>/dev/null")
 
     # fzf interaction helpers
 
@@ -265,7 +275,7 @@ class TmuxSession:
     def get_pane_content(self, session_name=None):
         """Capture pane content for a session. Uses self.session_name if not given."""
         target = session_name or self.session_name
-        return os.popen(f"tmux capture-pane -t '{target}' -p").read()
+        return os.popen(f"tmux capture-pane -t {shlex.quote(target)} -p").read()
 
     def clear_query_backspaces(self, count, delay=0.08):
         """Press backspace many times to clear an fzf query."""

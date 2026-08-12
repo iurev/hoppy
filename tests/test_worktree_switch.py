@@ -5,6 +5,7 @@ directory, and the directory of every tmux pane. Only sessions with a pane
 inside one of those worktrees are shown.
 """
 import os
+import shlex
 import time
 
 from .helpers.workflow import (
@@ -20,6 +21,9 @@ REPO = "/tmp/zx_wt_repo"
 FEATURE = "/tmp/zx_wt_feature"
 OUTSIDE = "/tmp/zx_wt_outside"
 
+# The fixture session, whose pane the tests move into REPO.
+CURRENT = "Destruction of the Universe"
+
 
 def build_worktree_world():
     """Make a repo, a linked worktree, and one directory outside both."""
@@ -28,19 +32,24 @@ def build_worktree_world():
     reset_dir(OUTSIDE)
 
 
+def new_session_in(name, path):
+    """Start a detached session whose pane sits in `path`."""
+    os.system(f"tmux new-session -d -s {shlex.quote(name)} -c {shlex.quote(path)}")
+
+
 def test_worktree_switch_lists_only_worktree_sessions(tmux):
     """Only sessions whose pane sits in a worktree of this repo are listed.
 
-    Sessions: test_session (in the repo), wt_feat (in the linked worktree),
-    wt_other (outside). So 2 of 3 are kept.
+    Sessions: the fixture session (in the repo), 'Feature Creep' (in the linked
+    worktree), 'Outer Rim Colony' (outside). So 2 of 3 are kept.
 
-    Breaks if: the worktree filter stops filtering (wt_other would show up), if
-    a real worktree session is dropped, if the '<kept>/<all>' header counts
-    change, or if picking a row no longer switches the client.
+    Breaks if: the worktree filter stops filtering ('Outer Rim Colony' would
+    show up), if a real worktree session is dropped, if the '<kept>/<all>'
+    header counts change, or if picking a row no longer switches the client.
     """
     build_worktree_world()
-    os.system(f"tmux new-session -d -s wt_feat -c {FEATURE}")
-    os.system(f"tmux new-session -d -s wt_other -c {OUTSIDE}")
+    new_session_in("Feature Creep", FEATURE)
+    new_session_in("Outer Rim Colony", OUTSIDE)
     time.sleep(0.6)
 
     tmux.run_command(f"cd {REPO}")
@@ -52,18 +61,19 @@ def test_worktree_switch_lists_only_worktree_sessions(tmux):
     )
 
     content = tmux.strip_ansi(tmux.get_output())
-    assert "wt_feat @" in content, f"Worktree session missing. Content:\n{content}"
-    assert "test_session @" in content, f"Repo session missing. Content:\n{content}"
-    assert "wt_other @" not in content, (
+    assert "Feature Creep @" in content, f"Worktree session missing. Content:\n{content}"
+    assert f"{CURRENT} @" in content, f"Repo session missing. Content:\n{content}"
+    assert "Outer Rim Colony @" not in content, (
         f"Session outside every worktree was listed. Content:\n{content}"
     )
 
-    tmux.send_keys("wt_feat")
+    # A capital C makes fzf case-sensitive, and only 'Creep' has one.
+    tmux.send_keys("Creep")
     time.sleep(0.5)
     tmux.press_enter()
 
-    assert tmux.wait_for_session_switch("wt_feat", timeout=4), (
-        f"Did not switch to wt_feat. Current: {tmux.get_current_session()}"
+    assert tmux.wait_for_session_switch("Feature Creep", timeout=4), (
+        f"Did not switch to 'Feature Creep'. Current: {tmux.get_current_session()}"
     )
 
 
@@ -74,8 +84,8 @@ def test_popup_worktree_switch_switches_session(tmux):
     never starts fzf, or if the pick stops switching the client.
     """
     build_worktree_world()
-    os.system(f"tmux new-session -d -s wt_feat -c {FEATURE}")
-    os.system(f"tmux new-session -d -s wt_other -c {OUTSIDE}")
+    new_session_in("Feature Creep", FEATURE)
+    new_session_in("Outer Rim Colony", OUTSIDE)
     time.sleep(0.6)
 
     tmux.run_command(f"cd {REPO}")
@@ -84,11 +94,11 @@ def test_popup_worktree_switch_switches_session(tmux):
     tmux.run_command("/app/session-zx popup-worktree-switch")
     assert tmux.wait_for_fzf_process(), "worktree popup did not start fzf"
 
-    tmux.send_keys("wt_feat")
+    tmux.send_keys("Creep")
     time.sleep(0.5)
     tmux.press_enter()
 
-    assert tmux.wait_for_session_switch("wt_feat", timeout=4), (
+    assert tmux.wait_for_session_switch("Feature Creep", timeout=4), (
         f"Popup worktree switch failed. Current: {tmux.get_current_session()}"
     )
 
@@ -127,7 +137,7 @@ def test_worktree_switch_without_matching_sessions_shows_message(tmux):
     worktree pane.
     """
     create_repo_with_detached_git_dir("/tmp/zx_sep_work", "/tmp/zx_sep_gitdir")
-    os.system("tmux new-session -d -s wt_elsewhere -c /tmp")
+    new_session_in("Lost In The Sauce", "/tmp")
     time.sleep(0.6)
 
     tmux.run_command("cd /tmp/zx_sep_work")

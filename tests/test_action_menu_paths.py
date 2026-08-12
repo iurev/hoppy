@@ -46,7 +46,7 @@ def test_action_menu_cancel_does_nothing(tmux):
 
 
 def test_action_menu_selects_switch_then_switches(tmux, create_sessions):
-    create_sessions("menu_target")
+    create_sessions("Up Up Down Down")
 
     tmux.run_command("/app/session-zx")
     time.sleep(1.5)
@@ -56,11 +56,12 @@ def test_action_menu_selects_switch_then_switches(tmux, create_sessions):
     tmux.press_enter()
     time.sleep(1.5)
 
-    tmux.send_keys("menu_target")
+    # A capital D makes fzf case-sensitive; only 'Up Up Down Down' holds "Down".
+    tmux.send_keys("Down")
     time.sleep(0.5)
     tmux.press_enter()
     time.sleep(1.0)
 
-    assert tmux.wait_for_session_switch("menu_target", timeout=3), (
-        f"Did not switch to menu_target. Current: {tmux.get_current_session()}"
+    assert tmux.wait_for_session_switch("Up Up Down Down", timeout=3), (
+        f"Did not switch to 'Up Up Down Down'. Current: {tmux.get_current_session()}"
     )
