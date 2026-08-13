@@ -68,7 +68,10 @@ services:
       - gobuildcache:/root/.cache/go-build
     environment:
       - CGO_ENABLED=0
-    command: go build -o session-zx .
+    # -buildvcs=false: the container is root but the bind-mounted .git belongs
+    # to the host user, so git refuses to read it and VCS stamping fails. The
+    # stamp buys us nothing here.
+    command: go build -buildvcs=false -o session-zx .
 
 volumes:
   # Named caches keep a warm rebuild near instant when only Go code changes.
