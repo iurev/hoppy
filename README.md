@@ -1,8 +1,41 @@
-# session-zx.mjs - Tmux Session Manager
+# session-zx — tmux session manager
 
-## What It Does
+[![CI](https://github.com/iurev/hoppy/actions/workflows/ci.yml/badge.svg)](https://github.com/iurev/hoppy/actions/workflows/ci.yml)
 
-This script manages tmux sessions using fzf (a fuzzy finder).
+A single Go binary that manages tmux sessions with fzf (a fuzzy finder).
+It runs inside a `tmux display-popup`.
+
+## Demo
+
+Four real integration tests, played one after another: switch by typing a
+name, Ctrl+N preview, killing several sessions with TAB, and the action menu.
+Every frame was recorded by the test suite itself.
+
+![session-zx demo](docs/demo.webp)
+
+## Install
+
+Download a binary from the [latest release](https://github.com/iurev/hoppy/releases/latest):
+
+```bash
+tar -xzf session-zx_<version>_linux_amd64.tar.gz
+install -m755 session-zx ~/.local/bin/
+```
+
+Builds are published for linux and macOS, amd64 and arm64.
+
+## Usage
+
+```bash
+session-zx switch          # Switch sessions
+session-zx new             # Create new session
+session-zx rename          # Rename a session
+session-zx kill            # Kill sessions
+session-zx detach          # Detach sessions
+session-zx worktree-switch # Switch within git worktrees
+session-zx capital-switch  # Switch to CAPITAL sessions
+session-zx popup-switch    # Open in popup window
+```
 
 ## Core Actions
 
@@ -60,17 +93,28 @@ The script uses a debounce system (300ms delay) to prevent too many rapid switch
 - Logs all events to a file
 - Adds number prefixes [1]-[9] for quick access
 
-## Usage
+`SPEC.md` describes every behaviour in detail. `ARCHITECTURE.md` describes the
+file layout.
 
-Run the script with different actions:
+## Development
+
+Go and Python run only inside Docker. Never on the host.
 
 ```bash
-./session-zx.mjs switch          # Switch sessions
-./session-zx.mjs new             # Create new session
-./session-zx.mjs rename          # Rename a session
-./session-zx.mjs kill            # Kill sessions
-./session-zx.mjs detach          # Detach sessions
-./session-zx.mjs worktree-switch # Switch within git worktrees
-./session-zx.mjs capital-switch  # Switch to CAPITAL sessions
-./session-zx.mjs popup-switch    # Open in popup window
+docker compose run --rm build              # compile ./session-zx
+docker compose run --rm build go test ./...# Go unit tests
+docker compose run --rm test               # 51 integration tests (tmux + fzf)
+docker compose run --rm test-record        # same tests, plus .cast recordings
+```
+
+Recordings land in `test_output/casts/`. Turn one into a WebP with
+`docker compose run --rm media scripts/cast2webp.sh <cast-name>`.
+
+## Releasing
+
+Push a tag. The `Release` workflow cross-compiles, checksums and publishes.
+It runs no tests and records nothing.
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
 ```
