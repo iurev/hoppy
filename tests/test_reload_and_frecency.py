@@ -50,7 +50,7 @@ def test_frecency_moves_the_picked_session_up_the_list(tmux, create_sessions):
     (SPEC §5.2), so it must move above 'Alpha Centauri'. The current session
     stays pinned at [1].
 
-    Breaks if: `switch` stops writing .session-frecency, the score buckets stop
+    Breaks if: `switch` stops writing .hoppy-frecency, the score buckets stop
     scoring a fresh pick above 0, or the list stops sorting by score.
     """
     create_sessions("Alpha Centauri", "Zeta Reticuli")
@@ -63,7 +63,7 @@ def test_frecency_moves_the_picked_session_up_the_list(tmux, create_sessions):
 
     # Pick 'Zeta Reticuli' with the real switch UI: only a successful switch
     # records. A capital Z makes fzf case-sensitive, and no other row holds one.
-    tmux.run_command("/app/session-zx switch")
+    tmux.run_command("/app/hoppy switch")
     time.sleep(1.5)
     tmux.send_keys("Zeta")
     time.sleep(0.5)

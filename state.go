@@ -40,7 +40,7 @@ type debounceState struct {
 }
 
 const (
-	frecencyDirName   = ".session-frecency"
+	frecencyDirName   = ".hoppy-frecency"
 	frecencyFileName  = "sessions.json"
 	frecencyCap       = 10
 	frecencyVersion   = 1
@@ -57,7 +57,7 @@ func (s frecencyState) selectedAt(name string) []int64 {
 	return s.Sessions[name].SelectedAt
 }
 
-// frecencyPath is <appDir>/.session-frecency/sessions.json (SPEC §0.3, §0.55).
+// frecencyPath is <appDir>/.hoppy-frecency/sessions.json (SPEC §0.3, §0.55).
 // tests/conftest.py deletes exactly this directory between tests, so appDir
 // must stay the directory holding the binary.
 func frecencyPath(appDir string) string {

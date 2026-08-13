@@ -2,17 +2,15 @@ node_modules/
 __pycache__/
 .pytest_cache/
 *.pyc
-.session-frecency/
-session-zx.log
+.hoppy-frecency/
+hoppy.log
 # writeAtomic's temp file. A crash mid-rotation leaves one behind.
-.session-zx.log.tmp*
-session-zx
+.hoppy.log.tmp*
+# the compiled binary
+/hoppy
 test_output/
 .venv/
 uv.lock
-
-# stray default `go build` output (module name)
-/hoppy
 
 # cross-compiled release artifacts (scripts/build-release.sh)
 dist/

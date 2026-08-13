@@ -1,5 +1,5 @@
-// Command session-zx is a tmux session switcher driven by fzf, the Go port of
-// session-zx.mjs. See SPEC.md and ARCHITECTURE.md.
+// Command hoppy is a tmux session switcher driven by fzf, the Go port of
+// hoppy.mjs. See SPEC.md and ARCHITECTURE.md.
 //
 // This file owns startup (SPEC §1), argv parsing (§1.2), the action router
 // (§2) and one handler per action (§3). All 15 actions are implemented.
@@ -45,7 +45,7 @@ const defaultFzfBin = "fzf"
 
 // Paths set once in main. No app struct, no DI container (ARCHITECTURE §6
 // rule 2). selfPath is symlink-resolved and goes into the fzf --bind commands;
-// appDir holds the log and .session-frecency/ (SPEC §0.55).
+// appDir holds the log and .hoppy-frecency/ (SPEC §0.55).
 var (
 	selfPath string
 	appDir   string

@@ -55,7 +55,7 @@ def test_worktree_switch_lists_only_worktree_sessions(tmux):
     tmux.run_command(f"cd {REPO}")
     time.sleep(0.8)
 
-    tmux.run_command("/app/session-zx worktree-switch")
+    tmux.run_command("/app/hoppy worktree-switch")
     assert tmux.wait_for_text("Worktree sessions (2/3)", timeout=8), (
         f"Wrong or missing worktree header. Content:\n{tmux.get_output()}"
     )
@@ -91,7 +91,7 @@ def test_popup_worktree_switch_switches_session(tmux):
     tmux.run_command(f"cd {REPO}")
     time.sleep(0.8)
 
-    tmux.run_command("/app/session-zx popup-worktree-switch")
+    tmux.run_command("/app/hoppy popup-worktree-switch")
     assert tmux.wait_for_fzf_process(), "worktree popup did not start fzf"
 
     tmux.send_keys("Creep")
@@ -113,7 +113,7 @@ def test_worktree_switch_outside_git_repository_shows_message(tmux):
 
     tmux.run_command("cd /tmp/zx_not_a_repo")
     time.sleep(0.8)
-    tmux.run_command("/app/session-zx worktree-switch")
+    tmux.run_command("/app/hoppy worktree-switch")
 
     assert tmux.wait_for_client_message(MSG_NOT_IN_GIT), (
         f"tmux never showed '{MSG_NOT_IN_GIT}'"
@@ -142,7 +142,7 @@ def test_worktree_switch_without_matching_sessions_shows_message(tmux):
 
     tmux.run_command("cd /tmp/zx_sep_work")
     time.sleep(0.8)
-    tmux.run_command("/app/session-zx worktree-switch")
+    tmux.run_command("/app/hoppy worktree-switch")
 
     assert tmux.wait_for_client_message(MSG_NO_WORKTREE_SESSIONS), (
         f"tmux never showed '{MSG_NO_WORKTREE_SESSIONS}'"

@@ -321,10 +321,10 @@ func TestSplitShellWords(t *testing.T) {
 
 func TestJoinShellWordsRoundTrip(t *testing.T) {
 	cases := [][]string{
-		{"/app/session-zx", "kill-single-from-line"},
-		{"/path with space/session-zx", "switch-from-line"},
-		{"/path'with'quote/session-zx", "switch"},
-		{"/app/session-zx", "kill-single", "my session"},
+		{"/app/hoppy", "kill-single-from-line"},
+		{"/path with space/hoppy", "switch-from-line"},
+		{"/path'with'quote/hoppy", "switch"},
+		{"/app/hoppy", "kill-single", "my session"},
 	}
 	for _, words := range cases {
 		joined := joinShellWords(words...)

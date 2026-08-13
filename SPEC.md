@@ -1,7 +1,7 @@
-# SPEC — `session-zx.mjs` behavior specification
+# SPEC — `hoppy.mjs` behavior specification
 
-Source of truth: `/home/yu/my/hoppy/session-zx.mjs` (1691 lines).
-All line cites below are `session-zx.mjs:LINE`.
+Source of truth: `/home/yu/my/hoppy/hoppy.mjs` (1691 lines).
+All line cites below are `hoppy.mjs:LINE`.
 Goal: a Go developer can reimplement this exactly, without reading the `.mjs`.
 
 Language note: simple English, short sentences (project rule).
@@ -15,21 +15,21 @@ These decisions are FINAL. The project owner made them.
 If any later section of this document disagrees with this section, **this section wins**.
 
 `<appDir>` below means the directory that holds the Go binary (symlinks resolved).
-It replaces `scriptDir` from the `.mjs` (`session-zx.mjs:21`).
+It replaces `scriptDir` from the `.mjs` (`hoppy.mjs:21`).
 
 ### 0.1 Decision table
 
 | # | Topic | Decision |
 |---|---|---|
-| D1 | Target language | **Go.** Full feature parity with `session-zx.mjs`, except where a decision below says otherwise. |
+| D1 | Target language | **Go.** Full feature parity with `hoppy.mjs`, except where a decision below says otherwise. |
 | D2 | Integration tests | The existing Python tests in `tests/` **stay** and must pass against the Go binary. Do not rewrite them in Go. |
 | D3 | Q1 / Q13 — current session in the switch list | **KEEP TODAY'S BEHAVIOR.** The current session stays visible and stays pinned to the top as `[1]`. The `1..9` shortcuts keep their present positions. `TMUX_FZF_SWITCH_CURRENT` is dead: **DELETE it. Do not implement it.** Q1 and Q13 are re-marked **KEEP (owner decision)**. |
-| D4 | Logging | Keep the same log file path (`<appDir>/session-zx.log`) and the same line format. Log only about **20 KEY events** (list in §13.2). Do **NOT** port all 167 `logEvent` sites. Also fix the rotation wipe bug (§13.3, M10). |
+| D4 | Logging | Keep the same log file path (`<appDir>/hoppy.log`) and the same line format. Log only about **20 KEY events** (list in §13.2). Do **NOT** port all 167 `logEvent` sites. Also fix the rotation wipe bug (§13.3, M10). |
 | D5 | Kaomoji preview pane | **DROP.** Remove the fzf `--preview` kaomoji feature, `pickPreviewKaomoji`, `KAOMOJI_PREVIEW_TEXT` and `TMUX_FZF_PREVIEW_OPTIONS`. This makes quirk **Q2 moot** — there is nothing left to fix. Read §0.2: this does **not** touch Ctrl+N / Ctrl+P. |
 | D6 | Frecency | Keep the exact same score buckets (100 / 50 / 10 / 1, §5.2). Use a **NEW simple JSON format that we own**. Do NOT reverse-engineer the `@getstation/frecency` library format. There is no old data to preserve. New path and schema: §0.3. |
 | D7 | Bugs | Fix every quirk marked **FIX**. In particular `new`, `rename` (Q8) and `detach` (Q3) are broken today and **MUST work** in Go. |
 | D8 | Q5 (env leak) | Apply the fix, but **PRESERVE `PATH` behavior** so `tmux`, `git` and `fzf` still resolve. Rules in §0.4. |
-| D9 | Q16 (fzf options) | `TMUX_FZF_BIN` and `TMUX_FZF_OPTIONS` are raw **SHELL strings** today and are `eval`ed (`session-zx.mjs:909`). They MUST keep working, e.g. `TMUX_FZF_BIN="fzf-tmux -p 80%"`. A **POSIX shell-word splitter** is required. Exact semantics in §0.5. |
+| D9 | Q16 (fzf options) | `TMUX_FZF_BIN` and `TMUX_FZF_OPTIONS` are raw **SHELL strings** today and are `eval`ed (`hoppy.mjs:909`). They MUST keep working, e.g. `TMUX_FZF_BIN="fzf-tmux -p 80%"`. A **POSIX shell-word splitter** is required. Exact semantics in §0.5. |
 
 ### 0.2 "Preview" means two different things — do not mix them up
 
@@ -59,8 +59,8 @@ What dropping the kaomoji pane changes:
 
 | Item | Value |
 |---|---|
-| Directory | `<appDir>/.session-frecency` (same directory name as today) |
-| File | `<appDir>/.session-frecency/sessions.json` |
+| Directory | `<appDir>/.hoppy-frecency` (same directory name as today) |
+| File | `<appDir>/.hoppy-frecency/sessions.json` |
 | Directory mode | `0700` |
 | File mode | `0600` |
 | Encoding | UTF-8 JSON |
@@ -95,7 +95,7 @@ Score buckets are unchanged: see §5.2.
 ### 0.4 Q5 fix — env import, with `PATH` preserved
 
 The constraint. Today `sourceEnv` copies the **whole** login environment into the process
-(`session-zx.mjs:1383-1385`). The `PATH` it copies is the login shell's `PATH`, and that is what
+(`hoppy.mjs:1383-1385`). The `PATH` it copies is the login shell's `PATH`, and that is what
 later finds `tmux`, `git` and `fzf`. If the port simply stops copying `PATH`, tool lookup can
 break on machines where tmux starts the process with a thin `PATH`.
 
@@ -116,7 +116,7 @@ is currently a no-op. Verify step 4 on the real target machine before shipping.
 ### 0.5 fzf options are SHELL strings — required splitter
 
 Today `buildFzfRunCommand` (§10.3) joins `TMUX_FZF_BIN` and `TMUX_FZF_OPTIONS` into one string
-`TMUX_FZF_RUN`, and bash runs `eval "$TMUX_FZF_RUN"` (`session-zx.mjs:909`).
+`TMUX_FZF_RUN`, and bash runs `eval "$TMUX_FZF_RUN"` (`hoppy.mjs:909`).
 So both variables are **shell text**, not single argv elements. Users rely on this:
 
 | Example value | Must still do |
@@ -195,11 +195,11 @@ It also sets the project's minimum fzf version to **0.51.0** (see O-1).
 
 | Item | Value | Why |
 |---|---|---|
-| Binary name | `session-zx` (no extension) | short, no spaces, no shell metacharacters, so the fzf `--bind` path stays clean |
-| Repo path | `/home/yu/my/hoppy/session-zx` | the repo root is bind-mounted at `/app` |
-| Container path | `/app/session-zx` | so `<appDir>` = `/app` |
-| Frecency dir | `/app/.session-frecency` | `tests/conftest.py:37` deletes exactly this path between tests |
-| Log file | `/app/session-zx.log` | already in `.gitignore` |
+| Binary name | `hoppy` (no extension) | short, no spaces, no shell metacharacters, so the fzf `--bind` path stays clean |
+| Repo path | `/home/yu/my/hoppy/hoppy` | the repo root is bind-mounted at `/app` |
+| Container path | `/app/hoppy` | so `<appDir>` = `/app` |
+| Frecency dir | `/app/.hoppy-frecency` | `tests/conftest.py:37` deletes exactly this path between tests |
+| Log file | `/app/hoppy.log` | already in `.gitignore` |
 
 Do **not** install it to `/usr/local/bin`. That moves `<appDir>` and `conftest.py:37` silently
 stops cleaning frecency, so ordering tests go flaky.
@@ -225,7 +225,7 @@ build-time `COPY` into `/app` is shadowed by the mount at run time.
 
 **Read this before you write a single `exec.Command`.**
 
-`session-zx.mjs` uses zx (`zx ^7.2.3`, see `package.json`). In zx 7 a `` $`…` `` template is
+`hoppy.mjs` uses zx (`zx ^7.2.3`, see `package.json`). In zx 7 a `` $`…` `` template is
 **not** executed directly. zx builds one command **string** and hands it to a shell:
 
 ```
@@ -305,11 +305,11 @@ The script is an ES module. The top-level code runs in this exact order.
 |---|---|---|---|
 | 1 | `$.verbose = false` | 18 | No command echo to stderr. |
 | 2 | Compute `scriptFilePath`, `scriptDir` | 20-21 | Absolute path of the script file and its directory. |
-| 3 | Compute `logFilePath` | 22 | `<scriptDir>/session-zx.log` |
+| 3 | Compute `logFilePath` | 22 | `<scriptDir>/hoppy.log` |
 | 4 | Constants | 23-24 | `LOG_MAX_BYTES = 262144` (256*1024). `LOG_TRIM_TARGET = floor(262144*0.8) = 209715`. |
 | 5 | Read `SESSION_SWITCH_DEBOUNCE_MS` | 26 | `parseInt(env, 10) \|\| 300`. **Read BEFORE `.envs` is sourced.** |
 | 6 | Compute `sessionDebounceFile` | 27 | `/tmp/tmux-session-<uid>.json` (see §7). |
-| 7 | Open frecency storage | 30-35 | Dir `<scriptDir>/.session-frecency`, key `tmux-sessions`. |
+| 7 | Open frecency storage | 30-35 | Dir `<scriptDir>/.hoppy-frecency`, key `tmux-sessions`. |
 | 8 | `await sourceEnv()` | 37 | See §8.1. |
 | 9 | `await ensureEnvDefaults()` | 38 | See §8.2. |
 | 10 | `baseFzfDefaultOpts = env.FZF_DEFAULT_OPTS ?? ''` | 40 | Captured AFTER `.envs` sourcing. |
@@ -348,7 +348,7 @@ The FIFO step (§9.2.1 step 1) still runs first, and it only runs for `new` and 
 
 ### 1.1 `getCurrentSession()` validates but never fails (M5)
 
-`session-zx.mjs:1349-1362`. After `tmux display-message -p '#S'` the trimmed name is passed to
+`hoppy.mjs:1349-1362`. After `tmux display-message -p '#S'` the trimmed name is passed to
 `assertValidSessionName` (§11.3). A failure is **not** thrown. It is only logged as:
 
 ```
@@ -370,11 +370,11 @@ is falsy. So a literal `0` argument behaves as if it were missing:
 
 | Command | Line that decides | What actually happens |
 |---|---|---|
-| `session-zx.mjs 0` | 49 `argv._[0] ? … : selectAction()` | the action menu opens (§3.1), as if no argument was given |
-| `session-zx.mjs kill-single 0` | 158 `if (!argv._[1])` | stderr `Error: Session name required for kill-single action`, exit 1 |
-| `session-zx.mjs kill-single-from-line 0` | 97 | the line is treated as `''` → no kill, exit 0 |
-| `session-zx.mjs switch-from-line 0` | 120 | the line is treated as `''` → `no session to process`, exit 0 |
-| `session-zx.mjs delayed-switch 0` | 113 | the token is treated as `''` → skip, exit 0 |
+| `hoppy.mjs 0` | 49 `argv._[0] ? … : selectAction()` | the action menu opens (§3.1), as if no argument was given |
+| `hoppy.mjs kill-single 0` | 158 `if (!argv._[1])` | stderr `Error: Session name required for kill-single action`, exit 1 |
+| `hoppy.mjs kill-single-from-line 0` | 97 | the line is treated as `''` → no kill, exit 0 |
+| `hoppy.mjs switch-from-line 0` | 120 | the line is treated as `''` → `no session to process`, exit 0 |
+| `hoppy.mjs delayed-switch 0` | 113 | the token is treated as `''` → skip, exit 0 |
 
 A tmux session may legally be named `0`. Go has no falsy-number rule, so a literal Go port would
 behave **differently** here. Decide once and follow it: the recommended Go rule is
@@ -854,10 +854,10 @@ Keep first occurrence, preserve order.
 | Item | Value |
 |---|---|
 | Backend | `node-localstorage` `LocalStorage` (**31**) |
-| Directory | `<scriptDir>/.session-frecency` (**30**) |
+| Directory | `<scriptDir>/.hoppy-frecency` (**30**) |
 | Frecency key | `tmux-sessions` (**32-35**, the `key` option of the `Frecency` constructor) |
 | Storage item key | `frecency_tmux-sessions` (1086) |
-| On-disk file | `<scriptDir>/.session-frecency/frecency_tmux-sessions` |
+| On-disk file | `<scriptDir>/.hoppy-frecency/frecency_tmux-sessions` |
 | Content | JSON |
 
 (W2/C1: earlier drafts cited 1030/1031/1033. Those numbers were wrong by exactly 1000.
@@ -911,7 +911,7 @@ Do **NOT** reverse-engineer the `@getstation/frecency` format. `node_modules/` i
 checkout (§16) and there is no existing frecency data to preserve.
 
 The port uses the new file and schema defined in **§0.3**:
-`<appDir>/.session-frecency/sessions.json`, `{"version":1,"sessions":{"<name>":{"selectedAt":[…]}}}`,
+`<appDir>/.hoppy-frecency/sessions.json`, `{"version":1,"sessions":{"<name>":{"selectedAt":[…]}}}`,
 cap 10 timestamps per session, atomic write, missing/broken file = every score 0.
 
 Everything else stays the same:
@@ -1474,7 +1474,7 @@ Rule 8 makes rules 3-7 redundant, but the error messages differ, so keep the ord
 > **Do NOT use Go's `\s` here.** A literal port of the JavaScript regex is WRONG and will
 > **reject names that the `.mjs` accepts**.
 
-The `.mjs` uses the JavaScript regex `/^[a-zA-Z0-9_\-\s]+$/` (`session-zx.mjs:1539`).
+The `.mjs` uses the JavaScript regex `/^[a-zA-Z0-9_\-\s]+$/` (`hoppy.mjs:1539`).
 JavaScript `\s` is far wider than Go's `\s`:
 
 | Engine | What `\s` means |
@@ -1502,7 +1502,7 @@ Full JavaScript `\s` set:
 | U+3000 | ideographic space |
 | U+FEFF | zero width no-break space (BOM) |
 
-Rules 5 and 6 (`session-zx.mjs:1524-1531`) already reject U+000A and U+000D (rule 5) and
+Rules 5 and 6 (`hoppy.mjs:1524-1531`) already reject U+000A and U+000D (rule 5) and
 U+0000-U+001F plus U+007F (rule 6). That removes U+0009, U+000B, U+000C and U+000D before
 rule 8 ever runs. So they can never be accepted, whatever rule 8 says.
 
@@ -1596,7 +1596,7 @@ as a bash error.
 
 | Item | Value |
 |---|---|
-| File | `<scriptDir>/session-zx.log` |
+| File | `<scriptDir>/hoppy.log` |
 | Line format | `<ISO-8601 timestamp> <message>\n` — e.g. `2026-07-20T11:06:44.123Z action=switch: complete` |
 | Timestamp | `new Date().toISOString()` — UTC, milliseconds, `Z` suffix |
 | Append mode | yes, UTF-8 |
@@ -1620,7 +1620,7 @@ Because the file is read fully into memory on rotation, a Go port can read only 
 
 ### 13.1 How many messages exist today (M7)
 
-`session-zx.mjs` has **167** `logEvent(...)` call sites. Earlier drafts gave the exact text for
+`hoppy.mjs` has **167** `logEvent(...)` call sites. Earlier drafts gave the exact text for
 about 25 of them (mostly in §7). There is no complete inventory in this document, and there will
 not be one.
 
@@ -1687,7 +1687,7 @@ these lines are the only way to debug it.
 
 ### 13.3 Rotation wipe bug — MUST FIX (M10)
 
-`session-zx.mjs:1667-1681`:
+`hoppy.mjs:1667-1681`:
 
 ```js
 let keepFromIndex = lines.length;              // 1669
@@ -1819,10 +1819,10 @@ and exit 1. Note this is a deliberate difference from the `.mjs` and record it i
 | Two Ctrl+N presses within 300 ms | only the last one switches; the first child logs a `skip` line | 0 |
 | `.envs` missing in both locations | defaults are used | — |
 | `KaomojiList/kaomojis.json` missing | fallback `(^_^)` text; nothing observable, because nothing reads it | — |
-| `.session-frecency` directory missing | `node-localstorage` creates it; all scores are 0, so tmux's own order is kept | — |
+| `.hoppy-frecency` directory missing | `node-localstorage` creates it; all scores are 0, so tmux's own order is kept | — |
 | DEL pressed in the `switch` list | the session under the cursor is killed and the list is reloaded via `reload-sessions`; the `[cancel]` row disappears after the reload — (`.mjs` today; the Go port does the opposite — Q7 FIX: the reloaded list keeps `[cancel]` and keeps the current session pinned) | 0 |
 | Selected line is the 10th or later (no `[N] ` prefix) and the name starts with `-` | minimist may parse the argument as a flag, so `argv._[1]` is missing and the helper becomes a no-op | 0 |
-| Argument is the literal `0` (session named `0`, or `session-zx.mjs 0`) | JavaScript treats `0` as falsy, so the argument is seen as missing — see §1.2 | 0 or 1 |
+| Argument is the literal `0` (session named `0`, or `hoppy.mjs 0`) | JavaScript treats `0` as falsy, so the argument is seen as missing — see §1.2 | 0 or 1 |
 | A tmux session whose name starts with `[` (e.g. `[work]`) | `addNumberPrefixes` gives it no number and consumes no number — see §4.3, M12 | 0 |
 | A single log line larger than 209715 bytes, and the log is over 256 KiB | the whole log file is erased — see §13.3, M10 | 0 (logging errors are swallowed) |
 | `kill-single` with stdin not a TTY (piped, redirected, `/dev/null`) | `✗ Timeout or error, kill cancelled` **immediately**, no 30 s wait — see §3.7 step 5, M9 | 0 |
@@ -1843,7 +1843,7 @@ designed to do. It matters for the port and for writing tests.
 | `<scriptDir>/KaomojiList/` does **not** exist | `pickPreviewKaomoji` always takes its fallback path. Irrelevant anyway — dropped by D5. |
 | `TMUX_FZF_PREVIEW_OPTIONS` is never set (Q2 + no `.envs`) | `includePreview` has **no effect** at any of its six call sites |
 | `TMUX_FZF_BIN` / `TMUX_FZF_OPTIONS` are never set | `TMUX_FZF_RUN` is always exactly `fzf` |
-| `<scriptDir>/.session-frecency/` does **not** exist | every frecency score is `0`, so the session order is exactly tmux's own order |
+| `<scriptDir>/.hoppy-frecency/` does **not** exist | every frecency score is `0`, so the session order is exactly tmux's own order |
 | `node_modules/` is **empty** | the `@getstation/frecency` on-disk format cannot be inspected — which is why decision D6 defines a new one |
 
 So the current baseline behaviour of the tool is: plain `fzf`, no preview pane, no frecency
@@ -1892,11 +1892,11 @@ re-classification. Summary table first:
 >
 > The text below stays as a description of the current code. Ignore its old "Fix:" suggestion.
 
-`session-zx.mjs:46`
+`hoppy.mjs:46`
 ```js
 const excludeCurrent = !process.env.TMUX_FZF_SWITCH_CURRENT;
 ```
-`session-zx.mjs:47` logs it, and that is the last use. Every call site passes a literal
+`hoppy.mjs:47` logs it, and that is the last use. Every call site passes a literal
 `excludeCurrent: false` instead: lines 87, 313, 377, 437. The parameter is honoured inside
 `getSessionsList` at 1125-1131, so the filtering code works — it is simply never asked for.
 
@@ -1922,7 +1922,7 @@ already in).
 >
 > The description below stays as history.
 
-`session-zx.mjs:1416-1423`
+`hoppy.mjs:1416-1423`
 ```js
   if (!process.env.TMUX_FZF_PREVIEW_OPTIONS) {
     const kaomoji = await pickPreviewKaomoji();
@@ -1952,7 +1952,7 @@ Fix (settled): drop the kaomoji machinery entirely. Do not port `KAOMOJI_PREVIEW
 > `[current]` and `[cancel]`, and picking `[current]` really does detach the current session.
 > Full CAN / CANNOT table: **§3.14.1**. Do not drop the `[current]` row when you fix this.
 
-`session-zx.mjs:1134-1142`
+`hoppy.mjs:1134-1142`
 ```js
 async function getAttachedSessionNames() {
   const { stdout } = await $`tmux list-sessions`;
@@ -1979,7 +1979,7 @@ second field is not `0`.
 
 ### Q4 — `TMUX_FZF_SESSION_FORMAT` is validated but never applied — **DROP**
 
-`session-zx.mjs:445` and `1063` read the variable; `461-471` and `1067-1074` validate it.
+`hoppy.mjs:445` and `1063` read the variable; `461-471` and `1067-1074` validate it.
 The actual tmux call at `1077` hard-codes `'#S @ #{session_windows} windows'`.
 
 So a user who sets `TMUX_FZF_SESSION_FORMAT` gets validation errors but no change in output.
@@ -2003,7 +2003,7 @@ even though nothing in this repo sets it.
 > **The exact required rules are in §0.4.** Verify on the real target machine before shipping:
 > `.envs` exists in neither location on this one (§16), so today the whole function is a no-op.
 
-`session-zx.mjs:1379-1385`
+`hoppy.mjs:1379-1385`
 ```js
 const script = `source "${quoted}" >/dev/null 2>&1 && env`;
 const { stdout } = await $`bash -lc ${script}`;
@@ -2020,7 +2020,7 @@ that changed — **plus `PATH` always**, and never the process-local keys listed
 
 ### Q6 — `SESSION_SWITCH_DEBOUNCE_MS` cannot be set from `.envs` — **FIX**
 
-`session-zx.mjs:26` runs at module top level, **before** `await sourceEnv()` at line 37.
+`hoppy.mjs:26` runs at module top level, **before** `await sourceEnv()` at line 37.
 Every other tunable is read after sourcing. So putting `SESSION_SWITCH_DEBOUNCE_MS=500` in
 `.envs` has no effect; only a real process environment variable works.
 
@@ -2031,7 +2031,7 @@ Fix: read the variable after loading `.envs`, and treat an explicit `0` as "no d
 
 ### Q7 — `reload-sessions` output is not identical to the initial list — **FIX (small)**
 
-`session-zx.mjs:87` calls `getSessionsList({ currentSession: null, excludeCurrent: false })`
+`hoppy.mjs:87` calls `getSessionsList({ currentSession: null, excludeCurrent: false })`
 with `currentSession: null`, and `92` prints the numbered rows without appending `[cancel]`.
 The initial `switch` list (§4.2) pins the current session to the top and always ends with `[cancel]`.
 
@@ -2049,7 +2049,7 @@ changes shape after the first DEL press.
 
 ### Q8 — the `new` / `rename` name prompt is broken by quoting; it always returns an empty name — **FIX (D7) — MANDATORY**
 
-`session-zx.mjs:1325`
+`hoppy.mjs:1325`
 ```js
 const promptCommand = `tmux split-window -v -l 30% -b "bash -c 'printf \"Session Name: \" && read session_name && echo \"$session_name\" > ${fifo}'"`;
 ```
@@ -2090,7 +2090,7 @@ prompt, or the bug can come back unnoticed.
 
 ### Q9 — the header quote escape is a no-op — **FIX (cosmetic, but a real injection risk)**
 
-`session-zx.mjs:982`
+`hoppy.mjs:982`
 ```js
 const fixed = header.replace(/"/g, '\"');
 parts.push(`--header="${fixed}"`)
@@ -2107,7 +2107,7 @@ options string. If a shell string is unavoidable, escape properly (`\"` → back
 
 ### Q10 — dead code: `extractSessionNameFromLine` — **FIX (delete)**
 
-`session-zx.mjs:474-477` defines a local helper inside the `switch` branch:
+`hoppy.mjs:474-477` defines a local helper inside the `switch` branch:
 ```js
 function extractSessionNameFromLine(line) {
   return line.split(/\s+/)[0];
@@ -2117,14 +2117,14 @@ Nothing calls it. It is also wrong for numbered rows (it would return `[1]`). Do
 
 ### Q11 — dead code: the empty-items guard in `runFzf` — **FIX (delete)**
 
-`session-zx.mjs:885` calls `assertValidItemsArray(items, 'fzf items')`, which throws
+`hoppy.mjs:885` calls `assertValidItemsArray(items, 'fzf items')`, which throws
 `fzf items cannot be empty` for an empty array (1577-1579). The guard at `888-891`
 (`if (!items || items.length === 0) return '';`) can therefore never run.
 In practice this never triggers, because `selectSessions` always appends `[cancel]`.
 
 ### Q12 — `rename` and `kill` show a duplicate way to pick the current session — **FIX (small)**
 
-`session-zx.mjs:562-567` and `593-598` call `selectSessions` **without** `currentSession`.
+`hoppy.mjs:562-567` and `593-598` call `selectSessions` **without** `currentSession`.
 Inside `selectSessions` (689) that takes the `else` branch, so a literal `[current]` row is
 prepended AND the real current session line is still in the list. The user sees two rows that
 mean the same session. `switch` / `worktree-switch` / `capital-switch` do pass `currentSession`,
@@ -2138,7 +2138,7 @@ drop the `[current]` pseudo-row.
 
 ### Q13 — the `switch` selector always includes the current session as `[1]` — **KEEP (owner decision D3)**
 
-`session-zx.mjs:689-698` pins the current session line to the top, and `addNumberPrefixes`
+`hoppy.mjs:689-698` pins the current session line to the top, and `addNumberPrefixes`
 gives it `[1]`. Combined with the `1:pos(1)+accept` binding (the literal is at **488**, inside the
 array that starts at 487 — W4), pressing `1` runs `tmux switch-client` to the session the user is
 already in. That is a harmless no-op in tmux.
@@ -2149,7 +2149,7 @@ already in. That is a harmless no-op in tmux.
 
 ### Q14 — `kill` deletes in reverse lexicographic order — **KEEP**
 
-`session-zx.mjs:618`: `const ordered = targets.slice().sort().reverse();`
+`hoppy.mjs:618`: `const ordered = targets.slice().sort().reverse();`
 This is a plain JavaScript string sort (UTF-16 code units), then reversed.
 
 The conclusion for Go is unchanged: **`sort.Strings` then reverse gives the same order.**
@@ -2175,7 +2175,7 @@ add them to the known-action list so the error message is honest.
 
 ### Q16 — `bash -ls` (login shell) can clobber the fzf options — **FIX (D9), with a shell-word splitter**
 
-`session-zx.mjs:916`: `spawn('bash', ['-ls'], { env, ... })`.
+`hoppy.mjs:916`: `spawn('bash', ['-ls'], { env, ... })`.
 The `-l` flag makes bash read `/etc/profile` and `~/.bash_profile`. If any of those set
 `FZF_DEFAULT_OPTS`, the carefully built value from line 893 is overwritten before fzf runs.
 The same risk applies to `TMUX_FZF_RUN`.
@@ -2200,7 +2200,7 @@ no heredoc, no `eval`. Feed the items on fzf's stdin.
 
 ### Q17 — no shell quoting on the fzf binding command paths — **FIX**
 
-`session-zx.mjs:481-483, 331-332, 396-397` build binding strings by string concatenation:
+`hoppy.mjs:481-483, 331-332, 396-397` build binding strings by string concatenation:
 ```
 --bind 'del:execute(<scriptPath> kill-single-from-line {})+reload(<scriptPath> reload-sessions)'
 ```
@@ -2222,7 +2222,7 @@ blacklist to a proper quoting routine.
    ```go
    "execute(" + shellquote.Join(bin, "kill-single-from-line") + " {})"
    ```
-3. Delete the metacharacter blacklist at `session-zx.mjs:455`. With proper quoting a path such
+3. Delete the metacharacter blacklist at `hoppy.mjs:455`. With proper quoting a path such
    as `/home/u/[work]/hoppy` is harmless, and today it is rejected for no reason.
    Keep the two other `switch` preconditions: the path is a non-empty string, and its length
    is ≤ 4096 (§3.11).

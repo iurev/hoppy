@@ -1,4 +1,4 @@
-# Comprehensive Test Guidelines for session-zx.mjs
+# Comprehensive Test Guidelines for hoppy.mjs
 
 This document provides detailed requirements and examples for writing integration tests for the tmux session manager script.
 
@@ -13,7 +13,7 @@ def test_session_switch_actually_works():
     os.system("tmux new-session -d -s switch_to")
 
     # Run script and select target session
-    os.system("tmux send-keys -t switch_from 'node /app/session-zx.mjs switch' Enter")
+    os.system("tmux send-keys -t switch_from 'node /app/hoppy.mjs switch' Enter")
     time.sleep(1.0)
     os.system("tmux send-keys -t switch_from 'switch_to'")
     os.system("tmux send-keys -t switch_from Enter")
@@ -30,7 +30,7 @@ def test_session_switch():
     os.system("tmux new-session -d -s test")
 
     # Run script
-    result = os.system("node /app/session-zx.mjs switch")
+    result = os.system("node /app/hoppy.mjs switch")
 
     # Just check script didn't crash
     assert result == 0  # BULLSHIT - doesn't verify switching happened!
@@ -47,7 +47,7 @@ def test_script_lists_sessions():
     os.system("tmux new-session -d -s beta")
 
     # Run THE SCRIPT'S action
-    output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+    output = os.popen("node /app/hoppy.mjs reload-sessions").read()
 
     # Verify THE SCRIPT listed them
     assert "alpha" in output
@@ -79,7 +79,7 @@ def test_number_key_quick_select():
     initial = os.popen("tmux display-message -t num_first -p '#S'").read().strip()
 
     # Run script and press '2'
-    os.system("tmux send-keys -t num_first 'node /app/session-zx.mjs switch' Enter")
+    os.system("tmux send-keys -t num_first 'node /app/hoppy.mjs switch' Enter")
     time.sleep(1.0)
     os.system("tmux send-keys -t num_first '2'")
     time.sleep(0.8)
@@ -97,7 +97,7 @@ def test_number_key():
     os.system("tmux new-session -d -s two")
 
     # Run script
-    os.system("node /app/session-zx.mjs switch")
+    os.system("node /app/hoppy.mjs switch")
 
     current = os.popen("tmux display-message -p '#S'").read().strip()
 
@@ -123,7 +123,7 @@ def test_user_workflow_with_keybinding():
 
     # User presses Ctrl+Shift+L - this is what we're testing!
     # Note: In detached sessions, we simulate by running what the keybinding triggers
-    os.system("tmux send-keys -t test 'node /app/session-zx.mjs popup-switch' Enter")
+    os.system("tmux send-keys -t test 'node /app/hoppy.mjs popup-switch' Enter")
 
     # Or better yet, if we can trigger the keybinding directly:
     # os.system("tmux send-keys -t test C-S-l")  # Only works in attached sessions!
@@ -133,7 +133,7 @@ def test_user_workflow_with_keybinding():
 ```python
 def test_script_directly():
     # Just run the script - this is NOT how users work with it!
-    os.system("node /app/session-zx.mjs switch")  # WRONG - users use Ctrl+Shift+L!
+    os.system("node /app/hoppy.mjs switch")  # WRONG - users use Ctrl+Shift+L!
 
     # This tests the script works, but NOT the user workflow
 ```
@@ -167,7 +167,7 @@ Users don't type commands - they press keys:
 # os.system("tmux send-keys -t test C-S-l")  # Doesn't work!
 
 # Run what Ctrl+Shift+L would execute
-os.system("tmux send-keys -t test 'node /app/session-zx.mjs popup-switch' Enter")
+os.system("tmux send-keys -t test 'node /app/hoppy.mjs popup-switch' Enter")
 
 # This simulates the keybinding behavior while testing in detached mode
 ```
@@ -196,7 +196,7 @@ def test_complete_user_workflow():
     assert before == "work"
 
     # User presses Ctrl+Shift+L (we simulate by running what it triggers)
-    os.system("tmux send-keys -t work 'node /app/session-zx.mjs popup-switch' Enter")
+    os.system("tmux send-keys -t work 'node /app/hoppy.mjs popup-switch' Enter")
     time.sleep(1.0)  # Popup appears with fzf
 
     # User types to filter
@@ -222,7 +222,7 @@ def test_just_script():
     os.system("tmux new-session -d -s personal")
 
     # Just run script - user never does this!
-    os.system("node /app/session-zx.mjs switch")
+    os.system("node /app/hoppy.mjs switch")
 
     # Missing: keybinding, tmux integration, real workflow
 ```
@@ -245,17 +245,17 @@ Each keybinding represents a different user workflow that MUST be tested.
 **GOOD:**
 ```python
 # Test reload-sessions action
-output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+output = os.popen("node /app/hoppy.mjs reload-sessions").read()
 assert "alpha" in output
 
 # Test switch action with interaction
-os.system("tmux send-keys -t test 'node /app/session-zx.mjs switch' Enter")
+os.system("tmux send-keys -t test 'node /app/hoppy.mjs switch' Enter")
 ```
 
 **BAD:**
 ```python
 # Just run script with no action
-os.system("node /app/session-zx.mjs")  # Shows menu but doesn't test anything
+os.system("node /app/hoppy.mjs")  # Shows menu but doesn't test anything
 
 # Or don't run script at all
 os.system("tmux switch-client -t target")  # Testing tmux, not the script!
@@ -277,12 +277,12 @@ os.system("tmux switch-client -t target")  # Testing tmux, not the script!
 ```python
 # Dockerfile has production keybindings
 RUN cat > /root/.tmux.conf << 'EOF'
-bind-key -n C-S-l run-shell "/app/session-zx.mjs popup-switch"
-bind-key -n C-S-o run-shell "/app/session-zx.mjs popup-capital-switch"
+bind-key -n C-S-l run-shell "/app/hoppy.mjs popup-switch"
+bind-key -n C-S-o run-shell "/app/hoppy.mjs popup-capital-switch"
 EOF
 
 # Test simulates what keybinding does
-os.system("node /app/session-zx.mjs popup-switch")
+os.system("node /app/hoppy.mjs popup-switch")
 ```
 
 **BAD:**
@@ -297,9 +297,9 @@ os.system("tmux send-keys -t test C-S-l")  # Doesn't work in detached!
 ```
 
 ### Required Keybindings in Docker tmux:
-- `Ctrl+Shift+L` → `/app/session-zx.mjs popup-switch`
-- `Ctrl+Shift+O` → `/app/session-zx.mjs popup-capital-switch`
-- `Ctrl+Shift+P` → `/app/session-zx.mjs popup-worktree-switch`
+- `Ctrl+Shift+L` → `/app/hoppy.mjs popup-switch`
+- `Ctrl+Shift+O` → `/app/hoppy.mjs popup-capital-switch`
+- `Ctrl+Shift+P` → `/app/hoppy.mjs popup-worktree-switch`
 
 ## 5. fzf Interaction Testing
 
@@ -311,7 +311,7 @@ def test_escape_returns_to_shell():
     os.system("tmux new-session -d -s escape_test")
 
     # Run script - fzf should appear
-    os.system("tmux send-keys -t escape_test 'node /app/session-zx.mjs switch' Enter")
+    os.system("tmux send-keys -t escape_test 'node /app/hoppy.mjs switch' Enter")
     time.sleep(1.0)
 
     during = os.popen("tmux capture-pane -t escape_test -p").read()
@@ -330,10 +330,10 @@ def test_escape_returns_to_shell():
 ```python
 def test_navigation():
     # Run script
-    os.system("node /app/session-zx.mjs switch")
+    os.system("node /app/hoppy.mjs switch")
 
     # Just check sessions are shown - doesn't test Ctrl+N does anything!
-    output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+    output = os.popen("node /app/hoppy.mjs reload-sessions").read()
     assert "session" in output  # NONSENSE - doesn't test navigation!
 ```
 
@@ -367,7 +367,7 @@ def test_switch():
     assert before == "A"
 
     # Switch to B
-    os.system("tmux send-keys -t A 'node /app/session-zx.mjs switch' Enter")
+    os.system("tmux send-keys -t A 'node /app/hoppy.mjs switch' Enter")
     time.sleep(1.0)
     os.system("tmux send-keys -t A 'B'")
     os.system("tmux send-keys -t A Enter")
@@ -385,7 +385,7 @@ def test_switch():
     os.system("tmux new-session -d -s B")
 
     # Run script
-    os.system("node /app/session-zx.mjs switch")
+    os.system("node /app/hoppy.mjs switch")
 
     # Just check B exists - doesn't verify we switched TO it!
     sessions = os.popen("tmux list-sessions").read()
@@ -406,7 +406,7 @@ def test_frecency_sorting():
         time.sleep(0.2)
 
     # Get session list
-    output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+    output = os.popen("node /app/hoppy.mjs reload-sessions").read()
     lines = output.split('\n')
 
     # Find indices
@@ -424,7 +424,7 @@ def test_frecency():
     os.system("tmux new-session -d -s test")
 
     # Just check session is listed
-    output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+    output = os.popen("node /app/hoppy.mjs reload-sessions").read()
     assert "test" in output  # Doesn't test sorting at all!
 ```
 
@@ -442,7 +442,7 @@ def test_kill():
     assert "keep_me" in before
 
     # Run script and kill kill_me
-    os.system("tmux send-keys -t keep_me 'node /app/session-zx.mjs switch' Enter")
+    os.system("tmux send-keys -t keep_me 'node /app/hoppy.mjs switch' Enter")
     time.sleep(1.0)
     os.system("tmux send-keys -t keep_me 'kill_me'")
     os.system("tmux send-keys -t keep_me DEL")
@@ -479,7 +479,7 @@ def test_listing():
         os.system(f"tmux new-session -d -s {s}")
 
     # Get SCRIPT output
-    output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+    output = os.popen("node /app/hoppy.mjs reload-sessions").read()
 
     # Verify ALL sessions in output
     for s in sessions:
@@ -528,7 +528,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # Create production tmux config
 RUN mkdir -p /root && cat > /root/.tmux.conf << 'EOF'
 set -g status off
-bind-key -n C-S-l run-shell "/app/session-zx.mjs popup-switch"
+bind-key -n C-S-l run-shell "/app/hoppy.mjs popup-switch"
 EOF
 ```
 
@@ -558,7 +558,7 @@ RUN apt-get update && apt-get install -y git
 **GOOD:**
 ```python
 # Give operations time to complete
-os.system("tmux send-keys -t test 'node /app/session-zx.mjs switch' Enter")
+os.system("tmux send-keys -t test 'node /app/hoppy.mjs switch' Enter")
 time.sleep(1.0)  # Wait for fzf to load
 
 os.system("tmux send-keys -t test 'filter'")
@@ -571,7 +571,7 @@ time.sleep(0.5)  # Wait for switch to complete
 **BAD:**
 ```python
 # No timing - race conditions!
-os.system("tmux send-keys -t test 'node /app/session-zx.mjs switch' Enter")
+os.system("tmux send-keys -t test 'node /app/hoppy.mjs switch' Enter")
 os.system("tmux send-keys -t test Enter")  # Runs before fzf loads!
 current = os.popen("tmux display-message -p '#S'").read()  # Reads before switch!
 ```
@@ -612,7 +612,7 @@ before = os.popen("tmux display-message -t A -p '#S'").read().strip()
 assert before == "A", f"Initial state wrong: {before}"
 
 # Perform action
-os.system("tmux send-keys -t A 'node /app/session-zx.mjs switch' Enter")
+os.system("tmux send-keys -t A 'node /app/hoppy.mjs switch' Enter")
 time.sleep(1.0)
 os.system("tmux send-keys -t A 'B' Enter")
 time.sleep(0.5)
@@ -625,7 +625,7 @@ assert after == "B", f"Did not switch! Still in {after}"
 **BAD:**
 ```python
 # No before state check
-os.system("node /app/session-zx.mjs switch")
+os.system("node /app/hoppy.mjs switch")
 
 # Weak after check
 sessions = os.popen("tmux list-sessions").read()
@@ -645,7 +645,7 @@ assert len(sessions) > 0  # Proves nothing!
 **GOOD:**
 ```python
 # Use script's direct output (bypasses fzf)
-output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+output = os.popen("node /app/hoppy.mjs reload-sessions").read()
 assert "session_name" in output
 
 # Use tmux display-message for current session
@@ -663,7 +663,7 @@ assert "session_name" in sessions
 output = os.popen("tmux capture-pane -t test -p").read()  # Won't capture popup!
 
 # Or no verification at all
-os.system("node /app/session-zx.mjs switch")
+os.system("node /app/hoppy.mjs switch")
 # How do we know it worked???
 ```
 
@@ -702,7 +702,7 @@ def test_number_key_quick_select():
 def test_script_navigation_with_ctrl_n():
     """Test Ctrl+N navigation."""
     # Runs script, gets session list
-    output = os.popen("node /app/session-zx.mjs reload-sessions").read()
+    output = os.popen("node /app/hoppy.mjs reload-sessions").read()
     assert "session" in output  # NONSENSE - doesn't test Ctrl+N at all!
 
 def test_kill_session_with_tmux_command():
@@ -736,7 +736,7 @@ def test_kill_session_with_tmux_command():
 **GOOD (testing script behavior):**
 ```python
 # Test the script handles switching
-os.system("tmux send-keys -t A 'node /app/session-zx.mjs switch' Enter")
+os.system("tmux send-keys -t A 'node /app/hoppy.mjs switch' Enter")
 current = os.popen("tmux display-message -p '#S'").read().strip()
 assert current == "B"
 ```

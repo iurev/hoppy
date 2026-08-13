@@ -54,7 +54,7 @@ def tmux(request):
 @pytest.fixture(autouse=True)
 def clean_frecency():
     """Clean frecency data before each test."""
-    frecency_dir = "/app/.session-frecency"
+    frecency_dir = "/app/.hoppy-frecency"
     if os.path.exists(frecency_dir):
         shutil.rmtree(frecency_dir)
 

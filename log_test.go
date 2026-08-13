@@ -108,7 +108,7 @@ func TestTruncateBytesKeepsRunesWhole(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRotateDoesNothingWhenSmall(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "session-zx.log")
+	path := filepath.Join(t.TempDir(), "hoppy.log")
 	body := "line one\nline two\n"
 	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestRotateMissingFileIsNotAnError(t *testing.T) {
 }
 
 func TestRotateTrimsAndKeepsTheNewestLines(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "session-zx.log")
+	path := filepath.Join(t.TempDir(), "hoppy.log")
 
 	var b strings.Builder
 	// Each line is 99 chars + newline = 100 bytes. 3000 lines = 300000 bytes,
@@ -180,7 +180,7 @@ func TestRotateTrimsAndKeepsTheNewestLines(t *testing.T) {
 
 // M10 end to end: one giant line must not erase the file.
 func TestRotateDoesNotWipeOnOneGiantLine(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "session-zx.log")
+	path := filepath.Join(t.TempDir(), "hoppy.log")
 	giant := strings.Repeat("y", logMaxBytes+10)
 	if err := os.WriteFile(path, []byte("old\n"+giant+"\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -286,7 +286,7 @@ func TestRotateBoundaryAtLogMaxBytes(t *testing.T) {
 	}
 
 	t.Run("exactly 262144 bytes does not rotate", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "session-zx.log")
+		path := filepath.Join(t.TempDir(), "hoppy.log")
 		body := build(logMaxBytes)
 		if len(body) != logMaxBytes {
 			t.Fatalf("test setup wrote %d bytes, want %d", len(body), logMaxBytes)
@@ -307,7 +307,7 @@ func TestRotateBoundaryAtLogMaxBytes(t *testing.T) {
 	})
 
 	t.Run("262145 bytes rotates", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "session-zx.log")
+		path := filepath.Join(t.TempDir(), "hoppy.log")
 		body := build(logMaxBytes + 1)
 		if len(body) != logMaxBytes+1 {
 			t.Fatalf("test setup wrote %d bytes, want %d", len(body), logMaxBytes+1)
@@ -335,7 +335,7 @@ func TestRotateBoundaryAtLogMaxBytes(t *testing.T) {
 // next logEvent does not rotate again (SPEC §13.3: truncate to logMaxBytes-1,
 // plus the newline).
 func TestRotateOfAGiantLineCannotReTrigger(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "session-zx.log")
+	path := filepath.Join(t.TempDir(), "hoppy.log")
 	giant := strings.Repeat("y", logMaxBytes*2)
 	if err := os.WriteFile(path, []byte(giant+"\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -372,7 +372,7 @@ func TestLogEventSwallowsErrors(t *testing.T) {
 	if err := os.WriteFile(blocker, []byte("x"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	logPath = filepath.Join(blocker, "session-zx.log")
+	logPath = filepath.Join(blocker, "hoppy.log")
 	logEvent("must not panic and must not return anything")
 }
 

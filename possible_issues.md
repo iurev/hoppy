@@ -2,7 +2,7 @@
 
 ## Context
 
-The tests for `session-zx.mjs` have sanity issues (wrong/misleading code) and coverage gaps (missing workflows). This plan fixes existing problems and adds missing tests.
+The tests for `hoppy.mjs` have sanity issues (wrong/misleading code) and coverage gaps (missing workflows). This plan fixes existing problems and adds missing tests.
 
 ---
 

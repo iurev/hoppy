@@ -14,7 +14,7 @@
   so, here's the list of the things you can skip if they don't work:
   you may skip key-press emulation like ctrl+shift+l, but i encourage you to at least _try_ other shortcuts, like f2 for example, or even default keys like just "w" would be enough for tests;
 
-  i want you to look at the script, and create list of user workflows which go out from this @session-zx.mjs script in detail, like very thoroughly: including pressing backspace, etc;
+  i want you to look at the script, and create list of user workflows which go out from this @hoppy.mjs script in detail, like very thoroughly: including pressing backspace, etc;
   things i don't need you to test for now:
   (1) numbers for sessions: i don't use them
   (2) smart sorting of sessions

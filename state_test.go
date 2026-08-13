@@ -151,9 +151,9 @@ func TestSaveFrecencyModes(t *testing.T) {
 }
 
 // SPEC §0.55 / ARCHITECTURE §4: tests/conftest.py:37 deletes exactly
-// <appDir>/.session-frecency, so the path must not move.
+// <appDir>/.hoppy-frecency, so the path must not move.
 func TestFrecencyPathLayout(t *testing.T) {
-	if got := frecencyPath("/app"); got != "/app/.session-frecency/sessions.json" {
+	if got := frecencyPath("/app"); got != "/app/.hoppy-frecency/sessions.json" {
 		t.Errorf("frecencyPath(/app) = %q", got)
 	}
 }

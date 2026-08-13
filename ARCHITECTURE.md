@@ -1,4 +1,4 @@
-# ARCHITECTURE — the Go port of `session-zx.mjs`
+# ARCHITECTURE — the Go port of `hoppy.mjs`
 
 Status: design + compiling skeleton. No application logic yet.
 Written 2026-08-07. Language: simple English, short sentences (project rule).
@@ -21,8 +21,8 @@ Three agents wrote the three input documents. They disagreed in 14 places.
 | R3 | Minimum fzf version | O-1: "`pos(N)` needs fzf ≥ 0.36" | go-libs: `--with-shell` needs 0.51.0. test-contract §7.5: "project minimum is 0.51.0, pin it". | Floor is **0.51.0**. The test image pins **0.60.3**. | **yes** — O-1 |
 | R4 | `reload-sessions` and the `[cancel]` row | §3.3: "No `[cancel]` row is printed". Q7 is labelled **FIX**: make reload identical to the initial list. | test-contract §4.1 repeats "prints no `[cancel]` row (SPEC §3.3 / Q7)". | SPEC contradicted **itself**; test-contract copied the wrong half. Q7 is a FIX, so the Go port **does** pin the current session and **does** append `[cancel]`. No test breaks. | **yes** — §3.3 |
 | R5 | Go version | not stated | go-libs §5: `go 1.25` in go.mod, build with 1.26.x. test-contract §7.2 sketch: `FROM golang:1.23-bookworm`. | go-libs wins (1.23 is out of security support). `go.mod` says `go 1.25`; the image is `golang:1.26-bookworm` (go1.26.5 verified). | n/a |
-| R6 | Where the Go source lives | not stated | test-contract §7.2 builds `./cmd/session-zx` | Rejected. A `cmd/` directory adds a package boundary for nothing. Flat `package main` at the repo root; build with `go build -o session-zx .` | n/a (recorded here) |
-| R7 | Binary name and path | never stated | test-contract §3.5: must be `/app/session-zx` or `conftest.py:37` stops cleaning frecency | Adopted as binding. | **yes** — new §0.55 |
+| R6 | Where the Go source lives | not stated | test-contract §7.2 builds `./cmd/hoppy` | Rejected. A `cmd/` directory adds a package boundary for nothing. Flat `package main` at the repo root; build with `go build -o hoppy .` | n/a (recorded here) |
+| R7 | Binary name and path | never stated | test-contract §3.5: must be `/app/hoppy` or `conftest.py:37` stops cleaning frecency | Adopted as binding. | **yes** — new §0.55 |
 | R8 | Atomic write durability | §0.3, §13.3: "temp file + rename" | go-libs S3: rename is atomic for readers but not durable. Need `Sync()` before rename. | Added. One `writeAtomic` helper, three call sites. | **yes** — §0.3, §13.3 |
 | R9 | Detached spawn in Go | §7.2 step 7 describes Node's `{detached:true, stdio:'ignore'}` only | go-libs S4 + test-contract G4: Go needs `SysProcAttr{Setsid:true}`, nil std fds, `Release()`, never `Wait()` | Added the Go recipe and the three traps. | **yes** — §7.2 |
 | R10 | fzf exit codes | §10.1/§12 state them as **bash** codes | go-libs S5: after the port there is no bash. Use fzf's own constants; code 2 is a user error (bad `TMUX_FZF_OPTIONS`). | Added a Go note. | **yes** — §12 |
@@ -35,7 +35,7 @@ Three agents wrote the three input documents. They disagreed in 14 places.
 
 | # | Gap | What I did |
 |---|---|---|
-| G1 | The 26 test sites still point at `session-zx.py`, which does not exist. `pytest` fails at the first assertion today. | Left the tests untouched — it is not my task. It is **commit 1** in §5 below. Verified the failure is exactly `assert os.path.exists("session-zx.py")`. |
+| G1 | The 26 test sites still point at `hoppy.py`, which does not exist. `pytest` fails at the first assertion today. | Left the tests untouched — it is not my task. It is **commit 1** in §5 below. Verified the failure is exactly `assert os.path.exists("hoppy.py")`. |
 | G2 | Nothing said whether the Docker image should also carry a fallback binary. | Decided **no**. `COPY --from=…` into `/app` is shadowed by the bind mount anyway, and building Go inside the test image would slow every test-image rebuild. A missing binary fails loudly, which is what we want. |
 | G3 | Both containers run as root and write into the bind mount. | Accepted. On this host Docker maps ownership back to `yu` (verified: the built binary is `-rwxrwxr-x yu yu`). If that ever changes, add `user:` to the compose services. |
 | G4 | O-2, O-3, O-4, O-5, O-6, O-7 in SPEC are still open owner questions. | Not touched. They do not block the skeleton. O-4 is effectively answered by using `os.Args` ("argument present = argument given"), but the owner should still confirm. |
@@ -158,7 +158,7 @@ and they exist for exactly one reason: unit tests without a tmux server and with
 Go, Python, `uv` and `pytest` never run on the host. A hook enforces this.
 
 ```bash
-# compile the binary into ./session-zx (host) = /app/session-zx (container)
+# compile the binary into ./hoppy (host) = /app/hoppy (container)
 docker compose run --rm build
 
 # Go unit tests
@@ -190,12 +190,12 @@ Facts about this setup:
 | Production dependencies | exactly one: `github.com/kballard/go-shellquote` |
 | Binary | `CGO_ENABLED=0`, `-trimpath`, static ELF, ~2.7 MB |
 | Test image | `python:3.11-slim` + tmux 3.5a + **fzf 0.60.3 pinned from the release tarball** + uv + pytest |
-| Node | **removed.** No test needs it. `session-zx.mjs` stays in the repo as the reference. |
+| Node | **removed.** No test needs it. `hoppy.mjs` stays in the repo as the reference. |
 | Caches | named volumes `gomodcache` (`/go/pkg/mod`) and `gobuildcache` (`/root/.cache/go-build`) — a warm rebuild is about a second |
 | Bind mount | `.:/app`. The binary is built **through** the mount, so it is not shadowed. |
 
-Why the binary must be `/app/session-zx` and nowhere else: `tests/conftest.py:37` deletes
-`/app/.session-frecency` between tests. `<appDir>` is the directory holding the binary
+Why the binary must be `/app/hoppy` and nowhere else: `tests/conftest.py:37` deletes
+`/app/.hoppy-frecency` between tests. `<appDir>` is the directory holding the binary
 (SPEC §0.1). Move the binary and that cleanup silently stops working, and ordering tests go
 flaky. See SPEC §0.55.
 
@@ -293,7 +293,7 @@ Nine commits. Each one leaves the tree building and the tests runnable.
 
 | # | Commit | Files | Why here |
 |---|---|---|---|
-| 1 | `test: repoint the suite at the session-zx binary` | 26 sites in `tests/**` (`/app/session-zx.py` → `/app/session-zx`, `./session-zx.py` → `./session-zx`), plus the docstring at `test_script_executes.py:1` | **Do this first.** Until it is done every run stops at `assert os.path.exists("session-zx.py")` and you get no signal at all. |
+| 1 | `test: repoint the suite at the hoppy binary` | 26 sites in `tests/**` (`/app/hoppy.py` → `/app/hoppy`, `./hoppy.py` → `./hoppy`), plus the docstring at `test_script_executes.py:1` | **Do this first.** Until it is done every run stops at `assert os.path.exists("hoppy.py")` and you get no signal at all. |
 | 2 | `feat(go): pure helpers and validators` | `text.go` + `text_test.go` | No dependencies. Full test coverage on day one. Everything else uses it. |
 | 3 | `feat(go): log file and rotation` | `log.go` + `log_test.go` | Small, self-contained, and the M10 fix is pure logic. You want logging before you debug anything else. |
 | 4 | `feat(go): tmux and git command wrappers` | `tmux.go` + `tmux_fake_test.go` | Unlocks everything below. Check every argv against SPEC §0.9.1 row by row. |

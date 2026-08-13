@@ -1,4 +1,4 @@
-# Python Rewrite Plan: `session-zx.mjs` -> modular Python CLI
+# Python Rewrite Plan: `hoppy.mjs` -> modular Python CLI
 
 > ---
 > # ⚠️ HISTORICAL DOCUMENT — DO NOT IMPLEMENT FROM THIS FILE
@@ -20,7 +20,7 @@
 > | **Env defaults** | "…optional kaomoji preview text var" | The kaomoji preview never worked: the guard tests `TMUX_FZF_PREVIEW_OPTIONS` but the body assigns `KAOMOJI_PREVIEW_TEXT`, and the line that would use it is commented out. Nothing reads the variable. **The Go port DROPS this feature entirely.** | SPEC.md Q2, §0.2 |
 > | **Main switch key bindings** | "`ctrl-n/p` preview switch helper" | This one is **correct and is KEPT in full**. It is a different feature from the kaomoji pane above — do not confuse them. | SPEC.md §0.2, §7 |
 > | **Current session position** | "current session line is moved to top when present" | Correct, and the Go port **keeps** it (owner decision). `TMUX_FZF_SWITCH_CURRENT` is dead code and is deleted, not implemented. | SPEC.md D3, Q1, Q13 |
-> | **Frecency sort** | "Reads `.session-frecency` localStorage payload" | The Go port uses a **new JSON format that we own**. It does not read the `node-localstorage` / `@getstation/frecency` layout. Score buckets are unchanged. | SPEC.md D6, §0.3 |
+> | **Frecency sort** | "Reads `.hoppy-frecency` localStorage payload" | The Go port uses a **new JSON format that we own**. It does not read the `node-localstorage` / `@getstation/frecency` layout. Score buckets are unchanged. | SPEC.md D6, §0.3 |
 > | **Logging and rotation** | "Same behavior" | The rotation code has a **wipe bug**: one over-long line erases the whole log. The Go port fixes it, and logs only ~20 key events instead of all 167. | SPEC.md D4, §13.2, §13.3 |
 >
 > One more thing the matrix never mentions: every `` $`…` `` command in the `.mjs` runs through
@@ -31,53 +31,53 @@
 Status: implementation in progress. Completed slices are tracked below.
 
 ## Implementation progress
-- [x] `parse_lines` implemented in `session_zx/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
-- [x] `ensure_trailing_newline` implemented in `session_zx/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
-- [x] `normalize_session_row` implemented in `session_zx/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
-- [x] `normalize_session_rows` implemented in `session_zx/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
-- [x] `add_number_prefixes` implemented in `session_zx/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
-- [x] `strip_number_prefix` implemented in `session_zx/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
-- [x] `extract_session_name` implemented in `session_zx/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
-- [x] `parse_targets` implemented in `session_zx/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
-- [x] `parse_env_output` implemented in `session_zx/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
-- [x] `dedupe_preserve_order` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
-- [x] `normalize_worktree_path` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
-- [x] `is_path_in_worktree` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
-- [x] `filter_sessions_by_worktrees` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
-- [x] `filter_capital_sessions` implemented in `session_zx/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
-- [x] `bucket_frecency_weight` implemented in `session_zx/domain/frecency.py` with unit tests in `tests/unit/domain/test_frecency.py` (2026-02-14).
-- [x] `score_selection_timestamps` implemented in `session_zx/domain/frecency.py` with unit tests in `tests/unit/domain/test_frecency.py` (2026-02-14).
-- [x] `sort_rows_by_frecency` implemented in `session_zx/domain/frecency.py` with unit tests in `tests/unit/domain/test_frecency.py` (2026-02-14).
-- [x] `make_debounce_token` implemented in `session_zx/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
-- [x] `normalize_debounce_state` implemented in `session_zx/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
-- [x] `should_execute_delayed_switch` implemented in `session_zx/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
-- [x] `validate_action` implemented in `session_zx/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
-- [x] `validate_session_name` implemented in `session_zx/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
-- [x] `validate_fzf_options` implemented in `session_zx/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
-- [x] `validate_header` implemented in `session_zx/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
-- [x] `validate_items` implemented in `session_zx/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
-- [x] `exit_codes` module implemented in `session_zx/app/exit_codes.py` with unit tests in `tests/unit/app/test_exit_codes.py` (2026-02-16).
-- [x] `context` module implemented in `session_zx/app/context.py` with unit tests in `tests/unit/app/test_context.py` (2026-02-16).
-- [x] `router` module implemented in `session_zx/app/router.py` with unit tests in `tests/unit/app/test_router.py` (2026-02-16).
-- [x] `errors` module implemented in `session_zx/domain/errors.py` with unit tests in `tests/unit/domain/test_errors.py` (2026-02-16).
-- [x] `models` module implemented in `session_zx/domain/models.py` with unit tests in `tests/unit/domain/test_models.py` (2026-02-16).
-- [x] `main` module implemented in `session_zx/cli/main.py` with unit tests in `tests/unit/cli/test_main.py` (2026-02-16).
-- [x] `composition` module implemented in `session_zx/app/composition.py` with unit tests in `tests/unit/app/test_composition.py` (2026-02-16).
-- [x] `action_menu` module implemented in `session_zx/use_cases/action_menu.py` with unit tests in `tests/unit/use_cases/test_action_menu.py` (2026-02-16).
-- [x] `popup_actions` module implemented in `session_zx/use_cases/popup_actions.py` with unit tests in `tests/unit/use_cases/test_popup_actions.py` (2026-02-16).
-- [x] `switch_actions` module implemented in `session_zx/use_cases/switch_actions.py` with unit tests in `tests/unit/use_cases/test_switch_actions.py` (2026-02-16).
-- [x] `helper_actions` module implemented in `session_zx/use_cases/helper_actions.py` with unit tests in `tests/unit/use_cases/test_helper_actions.py` (2026-02-16).
-- [x] `mutation_actions` module implemented in `session_zx/use_cases/mutation_actions.py` with unit tests in `tests/unit/use_cases/test_mutation_actions.py` (2026-02-16).
-- [x] Added executable compatibility shim `session-zx.py` forwarding to `session-zx.mjs`; end-to-end Docker suite now passes (`258 passed`) (2026-02-16).
-- [x] `ProcessPort` and `SubprocessAdapter` implemented in `session_zx/ports/process.py` and `session_zx/adapters/process_subprocess.py` with tests (2026-02-16).
-- [x] `TmuxPort` and `TmuxCliAdapter` implemented in `session_zx/ports/tmux.py` and `session_zx/adapters/tmux_cli.py` with tests (2026-02-16).
-- [x] `run_new`, `run_rename`, `run_kill`, `run_detach` implemented in `session_zx/use_cases/mutation_actions.py` with unit tests in `tests/unit/use_cases/test_mutation_actions.py` (2026-02-16).
-- [x] Restored missing executable compatibility shim `session-zx.py` (Path C integration fix); Docker integration suite passes again (2026-02-16).
+- [x] `parse_lines` implemented in `hoppy/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
+- [x] `ensure_trailing_newline` implemented in `hoppy/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
+- [x] `normalize_session_row` implemented in `hoppy/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
+- [x] `normalize_session_rows` implemented in `hoppy/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
+- [x] `add_number_prefixes` implemented in `hoppy/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
+- [x] `strip_number_prefix` implemented in `hoppy/domain/formatting.py` with unit tests in `tests/unit/domain/test_formatting.py` (2026-02-14).
+- [x] `extract_session_name` implemented in `hoppy/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
+- [x] `parse_targets` implemented in `hoppy/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
+- [x] `parse_env_output` implemented in `hoppy/domain/parsing.py` with unit tests in `tests/unit/domain/test_parsing.py` (2026-02-14).
+- [x] `dedupe_preserve_order` implemented in `hoppy/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
+- [x] `normalize_worktree_path` implemented in `hoppy/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
+- [x] `is_path_in_worktree` implemented in `hoppy/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
+- [x] `filter_sessions_by_worktrees` implemented in `hoppy/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
+- [x] `filter_capital_sessions` implemented in `hoppy/domain/filtering.py` with unit tests in `tests/unit/domain/test_filtering.py` (2026-02-14).
+- [x] `bucket_frecency_weight` implemented in `hoppy/domain/frecency.py` with unit tests in `tests/unit/domain/test_frecency.py` (2026-02-14).
+- [x] `score_selection_timestamps` implemented in `hoppy/domain/frecency.py` with unit tests in `tests/unit/domain/test_frecency.py` (2026-02-14).
+- [x] `sort_rows_by_frecency` implemented in `hoppy/domain/frecency.py` with unit tests in `tests/unit/domain/test_frecency.py` (2026-02-14).
+- [x] `make_debounce_token` implemented in `hoppy/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
+- [x] `normalize_debounce_state` implemented in `hoppy/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
+- [x] `should_execute_delayed_switch` implemented in `hoppy/domain/debounce.py` with unit tests in `tests/unit/domain/test_debounce.py` (2026-02-14).
+- [x] `validate_action` implemented in `hoppy/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
+- [x] `validate_session_name` implemented in `hoppy/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
+- [x] `validate_fzf_options` implemented in `hoppy/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
+- [x] `validate_header` implemented in `hoppy/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
+- [x] `validate_items` implemented in `hoppy/domain/validation.py` with unit tests in `tests/unit/domain/test_validation.py` (2026-02-14).
+- [x] `exit_codes` module implemented in `hoppy/app/exit_codes.py` with unit tests in `tests/unit/app/test_exit_codes.py` (2026-02-16).
+- [x] `context` module implemented in `hoppy/app/context.py` with unit tests in `tests/unit/app/test_context.py` (2026-02-16).
+- [x] `router` module implemented in `hoppy/app/router.py` with unit tests in `tests/unit/app/test_router.py` (2026-02-16).
+- [x] `errors` module implemented in `hoppy/domain/errors.py` with unit tests in `tests/unit/domain/test_errors.py` (2026-02-16).
+- [x] `models` module implemented in `hoppy/domain/models.py` with unit tests in `tests/unit/domain/test_models.py` (2026-02-16).
+- [x] `main` module implemented in `hoppy/cli/main.py` with unit tests in `tests/unit/cli/test_main.py` (2026-02-16).
+- [x] `composition` module implemented in `hoppy/app/composition.py` with unit tests in `tests/unit/app/test_composition.py` (2026-02-16).
+- [x] `action_menu` module implemented in `hoppy/use_cases/action_menu.py` with unit tests in `tests/unit/use_cases/test_action_menu.py` (2026-02-16).
+- [x] `popup_actions` module implemented in `hoppy/use_cases/popup_actions.py` with unit tests in `tests/unit/use_cases/test_popup_actions.py` (2026-02-16).
+- [x] `switch_actions` module implemented in `hoppy/use_cases/switch_actions.py` with unit tests in `tests/unit/use_cases/test_switch_actions.py` (2026-02-16).
+- [x] `helper_actions` module implemented in `hoppy/use_cases/helper_actions.py` with unit tests in `tests/unit/use_cases/test_helper_actions.py` (2026-02-16).
+- [x] `mutation_actions` module implemented in `hoppy/use_cases/mutation_actions.py` with unit tests in `tests/unit/use_cases/test_mutation_actions.py` (2026-02-16).
+- [x] Added executable compatibility shim `hoppy.py` forwarding to `hoppy.mjs`; end-to-end Docker suite now passes (`258 passed`) (2026-02-16).
+- [x] `ProcessPort` and `SubprocessAdapter` implemented in `hoppy/ports/process.py` and `hoppy/adapters/process_subprocess.py` with tests (2026-02-16).
+- [x] `TmuxPort` and `TmuxCliAdapter` implemented in `hoppy/ports/tmux.py` and `hoppy/adapters/tmux_cli.py` with tests (2026-02-16).
+- [x] `run_new`, `run_rename`, `run_kill`, `run_detach` implemented in `hoppy/use_cases/mutation_actions.py` with unit tests in `tests/unit/use_cases/test_mutation_actions.py` (2026-02-16).
+- [x] Restored missing executable compatibility shim `hoppy.py` (Path C integration fix); Docker integration suite passes again (2026-02-16).
 
 ## 1. Scope and non-goals for this phase
 
 ### Scope
-- Produce an implementation-ready rewrite plan for `session-zx.mjs`.
+- Produce an implementation-ready rewrite plan for `hoppy.mjs`.
 - Preserve behavioral parity for all currently reachable actions and helper actions.
 - Define modular, SOLID architecture for Python implementation.
 - Define a small-function policy (clear names, composition-first, minimal branching).
@@ -87,7 +87,7 @@ Status: implementation in progress. Completed slices are tracked below.
 
 ### Non-goals
 - No implementation of the Python rewrite in this phase.
-- No edits to current production code (`session-zx.mjs`) in this phase.
+- No edits to current production code (`hoppy.mjs`) in this phase.
 - No edits to existing integration tests in `tests/` in this phase.
 - No UX redesign or feature expansion in this phase.
 
@@ -105,7 +105,7 @@ Status: implementation in progress. Completed slices are tracked below.
 
 ## 2. Behavioral parity matrix: current `.mjs` behavior vs planned Python behavior
 
-| Behavior area | Current `session-zx.mjs` behavior | Planned Python behavior | Current test coverage |
+| Behavior area | Current `hoppy.mjs` behavior | Planned Python behavior | Current test coverage |
 |---|---|---|---|
 | Action resolution | No argv action -> fzf action menu (`switch`, `new`, `rename`, `detach`, `kill`, `[cancel]`) | Exact same labels/order/default flow | `tests/test_action_menu_paths.py`, `tests/test_script_executes.py` |
 | Menu cancel/no selection | Empty or `[cancel]` exits without switching session | Same no-op outcome | `tests/test_action_menu_paths.py` |
@@ -114,7 +114,7 @@ Status: implementation in progress. Completed slices are tracked below.
 | Popup capital wrapper | `popup-capital-switch` title `CAPITAL SESSIONS`, child `capital-switch` | Same | Not covered today |
 | Helper routing before action validation | `reload-sessions`, `kill-single-from-line`, `switch-from-line`, `delayed-switch` are handled before `assertValidAction` | Preserve this ordering for parity | Indirect only |
 | Switch list format | `tmux list-sessions -F '#S @ #{session_windows} windows'` + spacing normalized | Same row format and normalization | `tests/test_script_functionality.py` |
-| Frecency sort | Reads `.session-frecency` localStorage payload and sorts by age buckets | Same initial scoring/ordering semantics | Indirect only |
+| Frecency sort | Reads `.hoppy-frecency` localStorage payload and sorts by age buckets | Same initial scoring/ordering semantics | Indirect only |
 | Current session position | In selector, current session line is moved to top when present | Same behavior | Popup/switch tests (indirect) |
 | Number prefixes | Prefixes first 9 non-special rows with `[1]`..`[9]` | Same | `tests/test_script_functionality.py` (indirect) |
 | Main switch key bindings | `del` kill+reload, `ctrl-n/p` preview switch helper, `1..9` quick accept | Same key bindings and effects | `tests/test_switch_filter_navigation.py`, popup tests |
@@ -136,7 +136,7 @@ Status: implementation in progress. Completed slices are tracked below.
 | Env defaults | Default `TMUX_FZF_BIN=fzf`, default options empty, optional kaomoji preview text var | Same defaults | Indirect only |
 | fzf exit handling | Treat exit `0`, `1`, `130` as non-fatal for selection flow; other codes fail | Same mapping | Indirect only |
 | Validation semantics | Session/action/header/fzf option validation is strict and defensive | Same constraints initially | Indirect only |
-| Logging and rotation | Append to `session-zx.log`, rotate above 256KB, trim to 80% target | Same behavior | Not covered today |
+| Logging and rotation | Append to `hoppy.log`, rotate above 256KB, trim to 80% target | Same behavior | Not covered today |
 | Invalid action | Unknown action exits with error | Same | Not directly covered |
 | Legacy `kill-single` | Interactive confirmation path exists and remains callable | Keep during migration unless explicitly deprecated | Not covered today |
 
@@ -148,7 +148,7 @@ Parity policy for implementation: no intentional behavior changes without explic
 
 ```text
 src/
-  session_zx/
+  hoppy/
     cli/
       main.py                     # process entrypoint and exit mapping
       args.py                     # argv parsing and action resolution
@@ -194,7 +194,7 @@ src/
       clock_system.py
       random_system.py
 bin/
-  session-zx                      # thin executable wrapper to Python main
+  hoppy                      # thin executable wrapper to Python main
 ```
 
 ### Dependency direction
@@ -314,7 +314,7 @@ Decision points are explicit branch count targets.
 ## 5. End-to-end data flow
 
 ### 5.1 Command entry to exit
-1. User runs `session-zx [action]`.
+1. User runs `hoppy [action]`.
 2. CLI parses argv and loads runtime env values.
 3. Action is resolved from argv or action menu use case.
 4. Router validates/dispatches to one use case.
@@ -429,7 +429,7 @@ docker compose build test
 # Targeted module gate (example)
 docker compose run --rm test sh -lc \
   "pytest -q tests/unit/domain/test_parsing.py \
-    --cov=src/session_zx/domain/parsing.py \
+    --cov=src/hoppy/domain/parsing.py \
     --cov-branch \
     --cov-report=term-missing \
     --cov-fail-under=100"
@@ -437,7 +437,7 @@ docker compose run --rm test sh -lc \
 # Full package gate
 docker compose run --rm test sh -lc \
   "pytest -q tests \
-    --cov=src/session_zx \
+    --cov=src/hoppy \
     --cov-branch \
     --cov-report=term-missing:skip-covered \
     --cov-fail-under=100"
@@ -508,7 +508,7 @@ Acceptance criteria:
 ### Phase 7: Compatibility hardening and cutover
 Deliverables:
 - Frecency payload compatibility, env-source parity, log rotation parity.
-- Stable executable strategy (`bin/session-zx`, plus temporary wrapper decision).
+- Stable executable strategy (`bin/hoppy`, plus temporary wrapper decision).
 
 Acceptance criteria:
 - Full integration suite green.
@@ -522,7 +522,7 @@ Acceptance criteria:
 | tmux/fzf interactive timing flakiness | CI instability | polling assertions, bounded waits, deterministic debounce clock in unit tests |
 | Shell quoting/injection regressions | incorrect command execution | argv-first subprocess API; isolate shell evaluation to env/prompt adapters |
 | Debounce race drift | preview behavior mismatch | deterministic clock/random ports + race-focused unit tests |
-| Frecency payload mismatch | ranking regressions | fixture tests using real `.session-frecency` payload snapshots |
+| Frecency payload mismatch | ranking regressions | fixture tests using real `.hoppy-frecency` payload snapshots |
 | Worktree path edge cases | false positive/negative session filters | table-driven path normalization tests |
 | Coverage friction slows throughput | delivery drag | strict module-by-module change packages and targeted gates |
 | Existing tests tied to Node invocation | migration friction | keep compatibility wrapper during transition; switch invocation only when parity proven |
@@ -533,7 +533,7 @@ Acceptance criteria:
 ## 10. Open questions/assumptions that must be resolved before coding
 
 ### Open questions
-1. Cutover model: keep `session-zx.mjs` as temporary wrapper to Python, or replace entrypoint directly?
+1. Cutover model: keep `hoppy.mjs` as temporary wrapper to Python, or replace entrypoint directly?
 2. Frecency compatibility: must Python read/write exact existing localStorage payload key/value format?
 3. Legacy action: keep `kill-single` fully supported, or deprecate with a defined window?
 4. Validation contract: keep strict current regex/rules, or align to broader tmux session-name allowances?

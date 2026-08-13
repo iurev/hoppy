@@ -180,7 +180,7 @@ test_switch_with_number_key() {
   tmux new-session -d -s test3
 
   # Start script in a tmux pane
-  tmux split-window -h "./session-zx.mjs switch"
+  tmux split-window -h "./hoppy.mjs switch"
   sleep 0.5
 
   # Send key '1'
@@ -233,7 +233,7 @@ describe('Session Manager', () => {
 
   test('switch with number key', async () => {
     // Navigate
-    await tmux.exec('./session-zx.mjs switch');
+    await tmux.exec('./hoppy.mjs switch');
 
     // Interact
     await tmux.keyboard.press('1');
@@ -281,7 +281,7 @@ describe('Session Manager', () => {
 spawn tmux new-session -s test
 expect "$"
 
-send "./session-zx.mjs switch\r"
+send "./hoppy.mjs switch\r"
 expect "Select target session"
 
 send "1"

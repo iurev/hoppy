@@ -1,4 +1,4 @@
-"""Test that the session-zx binary executes correctly."""
+"""Test that the hoppy binary executes correctly."""
 import os
 import re
 import subprocess
@@ -35,11 +35,11 @@ def test_binary_exists_and_rejects_unknown_action():
     assertValidAction stops rejecting an unknown action with exit 1 and the
     SPEC §2.1 message.
     """
-    assert os.path.exists("session-zx"), "binary 'session-zx' was not built"
-    assert os.access("session-zx", os.X_OK), "binary 'session-zx' is not executable"
+    assert os.path.exists("hoppy"), "binary 'hoppy' was not built"
+    assert os.access("hoppy", os.X_OK), "binary 'hoppy' is not executable"
 
     result = subprocess.run(
-        ["./session-zx", "no-such-action"],
+        ["./hoppy", "no-such-action"],
         capture_output=True, text=True, timeout=15,
     )
 
@@ -61,7 +61,7 @@ def test_script_runs_without_error():
     Escape (for example when a child process keeps the pty open).
     """
     # Run the script and immediately send ESC to cancel
-    proc = pexpect.spawn("./session-zx", encoding='utf-8', timeout=10)
+    proc = pexpect.spawn("./hoppy", encoding='utf-8', timeout=10)
 
     try:
         # Wait for fzf to appear (look for prompt or header)
@@ -90,7 +90,7 @@ def test_script_shows_action_menu():
     Breaks if: an item is renamed, dropped or added, if the header text
     changes, or if cancelling the menu stops exiting 0.
     """
-    proc = pexpect.spawn("./session-zx", encoding='utf-8', timeout=10)
+    proc = pexpect.spawn("./hoppy", encoding='utf-8', timeout=10)
 
     try:
         screen = drain(proc, 2.5)

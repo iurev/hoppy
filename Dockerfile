@@ -3,7 +3,7 @@
 # =============================================================================
 # stage: gotools — the Go toolchain, used by the compose "build" service.
 # It never lands in the test image. The binary is compiled THROUGH the bind
-# mount into /app/session-zx, so a build-time COPY would be shadowed anyway.
+# mount into /app/hoppy, so a build-time COPY would be shadowed anyway.
 # =============================================================================
 FROM golang:1.26-bookworm AS gotools
 
@@ -12,7 +12,7 @@ ENV CGO_ENABLED=0
 ENV GOFLAGS=-trimpath
 
 WORKDIR /app
-CMD ["go", "build", "-o", "session-zx", "."]
+CMD ["go", "build", "-o", "hoppy", "."]
 
 # =============================================================================
 # stage: test — Python + pytest + tmux + fzf. This is the default target.
@@ -69,15 +69,15 @@ RUN mkdir -p /root && cat > /root/.tmux.conf << 'EOF'
 set -g status off
 set -g default-terminal "screen-256color"
 
-# Keybindings for the session-zx binary
+# Keybindings for the hoppy binary
 # Ctrl+Shift+L to switch sessions
-bind-key -n C-S-l run-shell "/app/session-zx popup-switch"
+bind-key -n C-S-l run-shell "/app/hoppy popup-switch"
 
 # Ctrl+Shift+O to switch to CAPITAL letter sessions only
-bind-key -n C-S-o run-shell "/app/session-zx popup-capital-switch"
+bind-key -n C-S-o run-shell "/app/hoppy popup-capital-switch"
 
 # Ctrl+Shift+P to switch sessions filtered by git worktrees
-bind-key -n C-S-p run-shell "/app/session-zx popup-worktree-switch"
+bind-key -n C-S-p run-shell "/app/hoppy popup-worktree-switch"
 EOF
 
 # Set environment variables

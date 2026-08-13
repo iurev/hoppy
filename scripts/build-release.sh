@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Cross-compile session-zx for every platform tmux runs on, then checksum.
-# Output: dist/session-zx_<version>_<os>_<arch>[.tar.gz] and dist/checksums.txt
+# Cross-compile hoppy for every platform tmux runs on, then checksum.
+# Output: dist/hoppy_<version>_<os>_<arch>[.tar.gz] and dist/checksums.txt
 #
 #   VERSION=v1.2.3 scripts/build-release.sh
 set -euo pipefail
@@ -16,14 +16,14 @@ export CGO_ENABLED=0
 for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
   os="${target%%/*}"
   arch="${target##*/}"
-  name="session-zx_${VERSION}_${os}_${arch}"
+  name="hoppy_${VERSION}_${os}_${arch}"
 
   echo "building $name"
   GOOS="$os" GOARCH="$arch" go build -trimpath \
-    -ldflags "-s -w" -o "$OUT/session-zx" .
+    -ldflags "-s -w" -o "$OUT/hoppy" .
 
-  tar -czf "$OUT/${name}.tar.gz" -C "$OUT" session-zx
-  rm "$OUT/session-zx"
+  tar -czf "$OUT/${name}.tar.gz" -C "$OUT" hoppy
+  rm "$OUT/hoppy"
 done
 
 ( cd "$OUT" && sha256sum ./*.tar.gz > checksums.txt )

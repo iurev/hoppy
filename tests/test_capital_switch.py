@@ -24,7 +24,7 @@ def test_capital_switch_lists_only_capital_sessions(tmux, create_sessions):
     """
     create_sessions("ALL YOUR BASE", "THE_CAKE_IS_A_LIE", "mostly_harmless")
 
-    tmux.run_command("/app/session-zx capital-switch")
+    tmux.run_command("/app/hoppy capital-switch")
     assert tmux.wait_for_text("CAPITAL sessions (2/4)", timeout=8), (
         f"Wrong or missing CAPITAL header. Content:\n{tmux.get_output()}"
     )
@@ -60,7 +60,7 @@ def test_popup_capital_switch_switches_session(tmux, create_sessions):
     """
     create_sessions("HAL 9000", "dave_stop")
 
-    tmux.run_command("/app/session-zx popup-capital-switch")
+    tmux.run_command("/app/hoppy popup-capital-switch")
     assert tmux.wait_for_fzf_process(), "CAPITAL popup did not start fzf"
 
     tmux.send_keys("HAL 9000")
@@ -81,7 +81,7 @@ def test_capital_switch_without_capital_sessions_shows_message(tmux, create_sess
     """
     create_sessions("dont_panic", "mostly_harmless")
 
-    tmux.run_command("/app/session-zx capital-switch")
+    tmux.run_command("/app/hoppy capital-switch")
 
     assert tmux.wait_for_client_message(MSG_NO_CAPITAL_SESSIONS), (
         f"tmux never showed '{MSG_NO_CAPITAL_SESSIONS}'"

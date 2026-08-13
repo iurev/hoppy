@@ -1,4 +1,4 @@
-# session-zx — tmux session manager
+# hoppy — tmux session manager
 
 [![CI](https://github.com/iurev/hoppy/actions/workflows/ci.yml/badge.svg)](https://github.com/iurev/hoppy/actions/workflows/ci.yml)
 
@@ -11,15 +11,15 @@ Four real integration tests, played one after another: switch by typing a
 name, Ctrl+N preview, killing several sessions with TAB, and the action menu.
 Every frame was recorded by the test suite itself.
 
-![session-zx demo](docs/demo.webp)
+![hoppy demo](docs/demo.webp)
 
 ## Install
 
 Download a binary from the [latest release](https://github.com/iurev/hoppy/releases/latest):
 
 ```bash
-tar -xzf session-zx_<version>_linux_amd64.tar.gz
-install -m755 session-zx ~/.local/bin/
+tar -xzf hoppy_<version>_linux_amd64.tar.gz
+install -m755 hoppy ~/.local/bin/
 ```
 
 Builds are published for linux and macOS, amd64 and arm64.
@@ -27,14 +27,14 @@ Builds are published for linux and macOS, amd64 and arm64.
 ## Usage
 
 ```bash
-session-zx switch          # Switch sessions
-session-zx new             # Create new session
-session-zx rename          # Rename a session
-session-zx kill            # Kill sessions
-session-zx detach          # Detach sessions
-session-zx worktree-switch # Switch within git worktrees
-session-zx capital-switch  # Switch to CAPITAL sessions
-session-zx popup-switch    # Open in popup window
+hoppy switch          # Switch sessions
+hoppy new             # Create new session
+hoppy rename          # Rename a session
+hoppy kill            # Kill sessions
+hoppy detach          # Detach sessions
+hoppy worktree-switch # Switch within git worktrees
+hoppy capital-switch  # Switch to CAPITAL sessions
+hoppy popup-switch    # Open in popup window
 ```
 
 ## Core Actions
@@ -101,7 +101,7 @@ file layout.
 Go and Python run only inside Docker. Never on the host.
 
 ```bash
-docker compose run --rm build              # compile ./session-zx
+docker compose run --rm build              # compile ./hoppy
 docker compose run --rm build go test ./...# Go unit tests
 docker compose run --rm test               # 51 integration tests (tmux + fzf)
 docker compose run --rm test-record        # same tests, plus .cast recordings

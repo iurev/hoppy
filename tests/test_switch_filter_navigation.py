@@ -13,7 +13,7 @@ CURRENT = "Destruction of the Universe"
 def test_switch_typing_filters_fzf_list(tmux, create_sessions):
     create_sessions("Blue Screen of Joy", "Gopher Rodeo", "sixty-seven")
 
-    tmux.run_command("/app/session-zx switch")
+    tmux.run_command("/app/hoppy switch")
     time.sleep(1.5)
 
     content = tmux.get_output()
@@ -42,7 +42,7 @@ def test_switch_arrow_down_then_enter_switches(tmux, create_sessions):
     create_sessions("Rubber Duck HQ")
     tmux.assert_current_session(CURRENT)
 
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/hoppy switch")
     time.sleep(1.5)
 
     tmux.press_arrow_down()
@@ -71,7 +71,7 @@ def test_switch_arrow_up_changes_cursor_then_switches(tmux, create_sessions):
     """
     create_sessions("emacs_is_an_os", "nano_gang", "vim_or_death")
 
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/hoppy switch")
     time.sleep(1.5)
 
     tmux.press_arrow_down()
@@ -102,7 +102,7 @@ def test_switch_arrow_up_changes_cursor_then_switches(tmux, create_sessions):
 def test_switch_clear_filter_with_backspaces(tmux, create_sessions):
     create_sessions("Stack Overflow Copypasta", "printf_debugging")
 
-    tmux.run_command("/app/session-zx switch")
+    tmux.run_command("/app/hoppy switch")
     time.sleep(1.5)
 
     tmux.send_keys("xxxxx")
@@ -138,7 +138,7 @@ def test_switch_clear_filter_with_backspaces(tmux, create_sessions):
 def test_switch_filter_then_arrow_selects_second_match(tmux, create_sessions):
     create_sessions("Doom_On_A_Fridge", "Doom_On_A_Toaster", "Excel Turing Machine")
 
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/hoppy switch")
     time.sleep(1.5)
     tmux.send_keys("doom_")
     time.sleep(0.5)
@@ -153,7 +153,7 @@ def test_switch_filter_then_arrow_selects_second_match(tmux, create_sessions):
     os.system(f"tmux switch-client -t {shlex.quote(CURRENT)}")
     time.sleep(0.5)
 
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/hoppy switch")
     time.sleep(1.5)
     tmux.send_keys("doom_")
     time.sleep(0.5)

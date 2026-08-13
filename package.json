@@ -1,9 +1,9 @@
 {
-  "name": "session-zx",
+  "name": "hoppy",
   "version": "1.0.0",
   "description": "Tmux session manager with fzf interface",
   "type": "module",
-  "main": "session-zx.mjs",
+  "main": "hoppy.mjs",
   "scripts": {
     "test": "pytest -v",
     "test:watch": "pytest -v --watch"

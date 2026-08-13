@@ -5,7 +5,7 @@ import shutil
 import time
 
 # Where the binary keeps frecency data (SPEC §0.3, §0.55).
-FRECENCY_FILE = "/app/.session-frecency/sessions.json"
+FRECENCY_FILE = "/app/.hoppy-frecency/sessions.json"
 
 # tmux display-message texts (SPEC §3.9, §3.10).
 MSG_NOT_IN_GIT = "Not in a git repository"
@@ -67,7 +67,7 @@ def run_reload_in_pane(tmux, out_path="/tmp/zx_reload_out.txt", timeout=10):
     if os.path.exists(out_path):
         os.remove(out_path)
 
-    tmux.run_command(f"/app/session-zx reload-sessions > {out_path} 2>&1")
+    tmux.run_command(f"/app/hoppy reload-sessions > {out_path} 2>&1")
 
     deadline = time.time() + timeout
     previous = None

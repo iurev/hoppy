@@ -8,7 +8,7 @@ CURRENT = "Destruction of the Universe"
 
 
 def test_new_session_creation(tmux):
-    tmux.run_command("/app/session-zx new")
+    tmux.run_command("/app/hoppy new")
     time.sleep(2.0)
 
     write_session_name_to_fifo("Hello_World_Again")
@@ -21,7 +21,7 @@ def test_new_session_creation(tmux):
 
 
 def test_rename_current_session(tmux):
-    tmux.run_command("/app/session-zx rename")
+    tmux.run_command("/app/hoppy rename")
     time.sleep(2.0)
 
     write_session_name_to_fifo("Universe Restored")
@@ -42,7 +42,7 @@ def test_rename_current_session(tmux):
 def test_rename_other_session(tmux, create_sessions):
     create_sessions("Deprecated_Since_1999")
 
-    tmux.run_command("/app/session-zx rename")
+    tmux.run_command("/app/hoppy rename")
     time.sleep(2.0)
 
     write_session_name_to_fifo("Modern_Stack_2026")
@@ -66,7 +66,7 @@ def test_rename_other_session(tmux, create_sessions):
 def test_kill_action_removes_session(tmux, create_sessions):
     create_sessions("Keep_Calm_And_Vim_On", "kill_it_with_fire")
 
-    tmux.run_command("/app/session-zx kill")
+    tmux.run_command("/app/hoppy kill")
     time.sleep(1.5)
 
     tmux.send_keys("kill_it")
@@ -89,7 +89,7 @@ def test_kill_multiple_sessions_with_tab(tmux, create_sessions):
     """
     create_sessions("Farewell My Segfault", "Goodbye Cruel World", "Immortal Snail")
 
-    tmux.run_command("TMUX_FZF_OPTIONS='--multi' /app/session-zx kill")
+    tmux.run_command("TMUX_FZF_OPTIONS='--multi' /app/hoppy kill")
     time.sleep(1.5)
 
     tmux.send_keys("goodbye")
@@ -133,7 +133,7 @@ def test_detach_action_detaches_the_client(tmux):
         f"No client attached before detach. Clients: {tmux.get_attached_sessions()}"
     )
 
-    tmux.run_command("/app/session-zx detach")
+    tmux.run_command("/app/hoppy detach")
     time.sleep(1.5)
 
     tmux.send_keys(CURRENT)

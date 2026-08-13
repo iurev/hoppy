@@ -3,7 +3,7 @@ import time
 
 
 def test_action_menu_shows_all_options(tmux):
-    tmux.run_command("/app/session-zx")
+    tmux.run_command("/app/hoppy")
     time.sleep(1.5)
 
     content = tmux.get_output()
@@ -24,7 +24,7 @@ def test_action_menu_cancel_does_nothing(tmux):
     """
     before = tmux.get_current_session()
 
-    tmux.run_command("/app/session-zx")
+    tmux.run_command("/app/hoppy")
     assert tmux.wait_for_text("Select an action.", timeout=6), (
         f"Action menu did not render. Content:\n{tmux.get_output()}"
     )
@@ -48,7 +48,7 @@ def test_action_menu_cancel_does_nothing(tmux):
 def test_action_menu_selects_switch_then_switches(tmux, create_sessions):
     create_sessions("Up Up Down Down")
 
-    tmux.run_command("/app/session-zx")
+    tmux.run_command("/app/hoppy")
     time.sleep(1.5)
 
     tmux.send_keys("switch")

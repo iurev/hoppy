@@ -25,7 +25,7 @@ jobs:
       - name: Go unit tests
         run: docker compose run --rm build go test ./...
 
-      - name: Compile session-zx
+      - name: Compile hoppy
         run: docker compose run --rm build
 
       # RECORD_CAST is unset here, so no asciinema recording happens.

@@ -378,12 +378,12 @@ func TestRunFzfReportsASpawnFailure(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSwitchBindingsOrderAndShape(t *testing.T) {
-	got := switchBindings("/app/session-zx")
+	got := switchBindings("/app/hoppy")
 	want := []string{
-		"del:execute(/app/session-zx kill-single-from-line {})" +
-			"+reload(/app/session-zx reload-sessions)",
-		"ctrl-n:down+execute-silent(/app/session-zx switch-from-line {})",
-		"ctrl-p:up+execute-silent(/app/session-zx switch-from-line {})",
+		"del:execute(/app/hoppy kill-single-from-line {})" +
+			"+reload(/app/hoppy reload-sessions)",
+		"ctrl-n:down+execute-silent(/app/hoppy switch-from-line {})",
+		"ctrl-p:up+execute-silent(/app/hoppy switch-from-line {})",
 		"1:pos(1)+accept,2:pos(2)+accept,3:pos(3)+accept,4:pos(4)+accept," +
 			"5:pos(5)+accept,6:pos(6)+accept,7:pos(7)+accept,8:pos(8)+accept," +
 			"9:pos(9)+accept",
@@ -394,7 +394,7 @@ func TestSwitchBindingsOrderAndShape(t *testing.T) {
 }
 
 func TestPreviewBindingsHaveNoDelKey(t *testing.T) {
-	got := previewBindings("/app/session-zx")
+	got := previewBindings("/app/hoppy")
 	if len(got) != 2 {
 		t.Fatalf("got %d bindings, want 2", len(got))
 	}
@@ -419,12 +419,12 @@ func TestSwitchBindingsQuoteAwkwardPaths(t *testing.T) {
 		self string
 		want string
 	}{
-		{"a space", "/opt/my tools/session-zx", "'/opt/my tools/session-zx'"},
+		{"a space", "/opt/my tools/hoppy", "'/opt/my tools/hoppy'"},
 		// shellquote.Join escapes a bare "'" with a backslash rather than the
 		// '\'' dance. Both are correct POSIX; the round-trip below is the real
 		// assertion.
-		{"a single quote", "/opt/it's/session-zx", `/opt/it\'s/session-zx`},
-		{"brackets need no quoting for sh word splitting", "/home/u/[work]/session-zx", ""},
+		{"a single quote", "/opt/it's/hoppy", `/opt/it\'s/hoppy`},
+		{"brackets need no quoting for sh word splitting", "/home/u/[work]/hoppy", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -449,7 +449,7 @@ func TestSwitchBindingsQuoteAwkwardPaths(t *testing.T) {
 
 // The {} placeholder is fzf's own and must never be shell-quoted by us.
 func TestSwitchBindingsLeaveThePlaceholderBare(t *testing.T) {
-	for _, b := range switchBindings("/opt/my tools/session-zx") {
+	for _, b := range switchBindings("/opt/my tools/hoppy") {
 		if strings.Contains(b, `'{}'`) || strings.Contains(b, `"{}"`) {
 			t.Errorf("binding %q quoted fzf's {} placeholder", b)
 		}

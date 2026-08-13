@@ -1,6 +1,6 @@
 # Go and Python both run ONLY inside these services. Never on the host.
 #
-#   docker compose run --rm build            # compile ./session-zx
+#   docker compose run --rm build            # compile ./hoppy
 #   docker compose run --rm test             # run the 43 pytest tests
 #   docker compose run --rm test-record      # same tests + .cast recordings
 #   docker compose run --rm build go test ./...   # Go unit tests
@@ -54,9 +54,9 @@ services:
     command: scripts/cast2webp.sh
 
   # The Go toolchain. It compiles THROUGH the bind mount, so the binary lands
-  # at ./session-zx on the host and at /app/session-zx in the test container.
+  # at ./hoppy on the host and at /app/hoppy in the test container.
   # Do not move it: <appDir> must stay /app or tests/conftest.py:37 stops
-  # cleaning .session-frecency.
+  # cleaning .hoppy-frecency.
   build:
     build:
       context: .
@@ -71,7 +71,7 @@ services:
     # -buildvcs=false: the container is root but the bind-mounted .git belongs
     # to the host user, so git refuses to read it and VCS stamping fails. The
     # stamp buys us nothing here.
-    command: go build -buildvcs=false -o session-zx .
+    command: go build -buildvcs=false -o hoppy .
 
 volumes:
   # Named caches keep a warm rebuild near instant when only Go code changes.

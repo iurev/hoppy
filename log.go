@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	logFileName = "session-zx.log"
+	logFileName = "hoppy.log"
 	// LOG_MAX_BYTES = 256 * 1024. Above this size the file is rotated.
 	logMaxBytes = 262144
 	// LOG_TRIM_TARGET = floor(262144 * 0.8). Rotation keeps about this much.
@@ -27,7 +27,7 @@ const (
 	logTimeLayout = "2006-01-02T15:04:05.000Z"
 )
 
-// logPath is <appDir>/session-zx.log (SPEC §0.55), set once by main.
+// logPath is <appDir>/hoppy.log (SPEC §0.55), set once by main.
 // While it is empty, logging is a no-op — that keeps unit tests silent.
 var logPath string
 
@@ -56,7 +56,7 @@ func logEvent(msg string) {
 // .log.1 backup file: the newest lines are kept, older ones go.
 //
 // ACCEPTED RACE — not fixed, on purpose. Rotation is read + writeAtomic +
-// rename, and several session-zx processes really do run at once (fzf's --bind
+// rename, and several hoppy processes really do run at once (fzf's --bind
 // calls re-invoke this binary). A concurrent O_APPEND write can land in the
 // unlinked inode and be lost. We accept it: the log is a debugging aid, nothing
 // reads it back, and the fix (flock) costs more than a missing line.

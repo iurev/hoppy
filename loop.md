@@ -1,7 +1,7 @@
 FINAL goal: we MUST rewrite *.mjs file into python; we're partially did this; Now we're somewhere in the middle;
 We MUST not execute this mjs script at all during ANY steps (it's kept only as a working reference);
 
-CRUCIAL: we have nvim session-zx.py, but this is SHITTY solution, it's ABSOLUTELY unacceptable to run it in the integration tests cause it calls mjs script; mjs script MUST Not be called; we already have the full python implementation. or if we don't have something: we MUST implement it.
+CRUCIAL: we have nvim hoppy.py, but this is SHITTY solution, it's ABSOLUTELY unacceptable to run it in the integration tests cause it calls mjs script; mjs script MUST Not be called; we already have the full python implementation. or if we don't have something: we MUST implement it.
 
 
 Run child Gemini agents sequentially from this parent Gemini session.
@@ -35,7 +35,7 @@ Coverage command template (per changed module):
 `docker compose run --rm test pytest -q <unit_test_path> --cov=<python_module_import_path> --cov-branch --cov-report=term-missing`
 
 Coverage command example:
-`docker compose run --rm test pytest -q tests/unit/app/test_exit_codes.py --cov=session_zx.app.exit_codes --cov-branch --cov-report=term-missing`
+`docker compose run --rm test pytest -q tests/unit/app/test_exit_codes.py --cov=hoppy.app.exit_codes --cov-branch --cov-report=term-missing`
 
 Command template (preferred, with live output via tee, example run 001):
 `/bin/zsh -lc 'gemini --yolo --no-sandbox --prompt "" < /home/yu/my/hoppy/prompt2.md 2>&1 | tee /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log; rc=${pipestatus[1]}; printf "\nEXIT_CODE:%s\n" "$rc" | tee -a /home/yu/my/hoppy/child-agent-logs/prompt2-run-001.log; exit "$rc"'`

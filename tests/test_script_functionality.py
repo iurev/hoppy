@@ -27,7 +27,7 @@ def kill_session(name):
 
 def run_script_reload():
     """Run the script's reload-sessions action and return output."""
-    return os.popen("/app/session-zx reload-sessions").read()
+    return os.popen("/app/hoppy reload-sessions").read()
 
 
 def reload_rows():

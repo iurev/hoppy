@@ -20,7 +20,7 @@ def test_pexpect_can_reach_fzf_in_popup(tmux, create_sessions):
     create_sessions("probably_fine")
 
     # Run popup-switch via pexpect
-    tmux.send_keys("/app/session-zx popup-switch")
+    tmux.send_keys("/app/hoppy popup-switch")
     tmux.press_enter()
 
     assert tmux.wait_for_fzf_process(), "popup-switch did not start fzf"
@@ -48,7 +48,7 @@ def test_capture_pane_during_popup(tmux, create_sessions):
     create_sessions("invisible_ink")
 
     # Run popup-switch
-    tmux.send_keys("/app/session-zx popup-switch")
+    tmux.send_keys("/app/hoppy popup-switch")
     tmux.press_enter()
 
     assert tmux.wait_for_fzf_process(), "popup-switch did not start fzf"
@@ -84,7 +84,7 @@ def test_switch_from_line_moves_the_client(tmux, create_sessions):
     tmux.assert_current_session(CURRENT)
 
     row = shlex.quote("[2] Sonar Ping @ 1 windows")
-    os.system(f"/app/session-zx switch-from-line {row}")
+    os.system(f"/app/hoppy switch-from-line {row}")
 
     assert tmux.wait_for_session_switch("Sonar Ping", timeout=5), (
         f"switch-from-line did not move the client. "
@@ -103,7 +103,7 @@ def test_send_keys_via_pexpect_reaches_fzf(tmux, create_sessions):
     create_sessions("Now You Dont", "Now You See Me")
 
     # Run switch directly (no popup)
-    tmux.run_command("/app/session-zx switch")
+    tmux.run_command("/app/hoppy switch")
     time.sleep(1.5)
 
     # Type some filter text. A capital S makes fzf case-sensitive, and only
@@ -139,7 +139,7 @@ def test_arrow_keys_work_in_fzf(tmux, create_sessions):
     create_sessions("Amiga Forever", "BeOS Nostalgia")
 
     # Use --reverse so ArrowDown can move from top row to next row.
-    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/session-zx switch")
+    tmux.run_command("FZF_DEFAULT_OPTS='--reverse' /app/hoppy switch")
     time.sleep(1.5)
 
     before = tmux.get_selected_row()

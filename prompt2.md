@@ -1,7 +1,7 @@
 You are implementing the Python rewrite iteratively with strict atomic slices.
 
 Context:
-- Source behavior reference: `session-zx.mjs`
+- Source behavior reference: `hoppy.mjs`
 - Planning source of truth: `plan.md`
 - Test guidance: `tests_guide.md`
 
@@ -27,7 +27,7 @@ Coverage command template (Docker-only, required for step 5):
 `docker compose run --rm test sh -lc 'pip install coverage pytest-cov >/tmp/pip.log && pytest -q <unit_test_path> --cov=<python_module_import_path> --cov-branch --cov-report=term-missing'`
 
 Coverage command example:
-`docker compose run --rm test sh -lc 'pip install coverage pytest-cov >/tmp/pip.log && pytest -q tests/unit/app/test_exit_codes.py --cov=session_zx.app.exit_codes --cov-branch --cov-report=term-missing'`
+`docker compose run --rm test sh -lc 'pip install coverage pytest-cov >/tmp/pip.log && pytest -q tests/unit/app/test_exit_codes.py --cov=hoppy.app.exit_codes --cov-branch --cov-report=term-missing'`
 
 Execution checklist:
 1. Read `plan.md` and current implementation status.

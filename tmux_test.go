@@ -115,13 +115,13 @@ func TestSpec091ArgvTable(t *testing.T) {
 		{
 			row:  9,
 			name: "display-popup is 17 elements and SESSIONS has no quotes",
-			call: func() { _ = tmuxDisplayPopup("SESSIONS", "/app/session-zx", "switch") },
+			call: func() { _ = tmuxDisplayPopup("SESSIONS", "/app/hoppy", "switch") },
 			want: []string{
 				"tmux", "display-popup", "-E",
 				"-w", "60%", "-h", "90%",
 				"-x", "R", "-y", "C",
 				"-T", "SESSIONS", "-b", "rounded",
-				"/app/session-zx", "switch",
+				"/app/hoppy", "switch",
 			},
 		},
 		{
@@ -264,24 +264,24 @@ func TestOtherCommandArgv(t *testing.T) {
 		},
 		{
 			"popup title WORKTREE SESSIONS stays one element",
-			func() { _ = tmuxDisplayPopup("WORKTREE SESSIONS", "/app/session-zx", "worktree-switch") },
+			func() { _ = tmuxDisplayPopup("WORKTREE SESSIONS", "/app/hoppy", "worktree-switch") },
 			[]string{
 				"tmux", "display-popup", "-E",
 				"-w", "60%", "-h", "90%",
 				"-x", "R", "-y", "C",
 				"-T", "WORKTREE SESSIONS", "-b", "rounded",
-				"/app/session-zx", "worktree-switch",
+				"/app/hoppy", "worktree-switch",
 			},
 		},
 		{
 			"popup title CAPITAL SESSIONS stays one element",
-			func() { _ = tmuxDisplayPopup("CAPITAL SESSIONS", "/app/session-zx", "capital-switch") },
+			func() { _ = tmuxDisplayPopup("CAPITAL SESSIONS", "/app/hoppy", "capital-switch") },
 			[]string{
 				"tmux", "display-popup", "-E",
 				"-w", "60%", "-h", "90%",
 				"-x", "R", "-y", "C",
 				"-T", "CAPITAL SESSIONS", "-b", "rounded",
-				"/app/session-zx", "capital-switch",
+				"/app/hoppy", "capital-switch",
 			},
 		},
 	}
