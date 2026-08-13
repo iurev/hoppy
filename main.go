@@ -842,7 +842,7 @@ func readConfirmKey(timeout time.Duration) (byte, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = ioctlTermios(fd, syscall.TCSETS, previous) }()
+	defer func() { _ = ioctlTermios(fd, tcSetTermios, previous) }()
 
 	type result struct {
 		key byte
@@ -872,10 +872,11 @@ func readConfirmKey(timeout time.Duration) (byte, error) {
 
 // enterRawMode turns off echo and line buffering and returns the old settings.
 // It uses the raw ioctls on purpose: golang.org/x/term would be a second
-// production dependency for one legacy action.
+// production dependency for one legacy action. The two ioctl numbers differ
+// per OS and live in termios_linux.go / termios_darwin.go.
 func enterRawMode(fd uintptr) (*syscall.Termios, error) {
 	var previous syscall.Termios
-	if err := ioctlTermios(fd, syscall.TCGETS, &previous); err != nil {
+	if err := ioctlTermios(fd, tcGetTermios, &previous); err != nil {
 		return nil, err
 	}
 	raw := previous
@@ -883,7 +884,7 @@ func enterRawMode(fd uintptr) (*syscall.Termios, error) {
 	raw.Iflag &^= syscall.IXON | syscall.ICRNL | syscall.BRKINT | syscall.INPCK | syscall.ISTRIP
 	raw.Cc[syscall.VMIN] = 1
 	raw.Cc[syscall.VTIME] = 0
-	if err := ioctlTermios(fd, syscall.TCSETS, &raw); err != nil {
+	if err := ioctlTermios(fd, tcSetTermios, &raw); err != nil {
 		return nil, err
 	}
 	return &previous, nil
