@@ -13,3 +13,6 @@ uv.lock
 
 # stray default `go build` output (module name)
 /hoppy
+
+# cross-compiled release artifacts (scripts/build-release.sh)
+dist/

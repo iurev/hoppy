@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Everything runs inside the compose services, exactly like on a laptop.
+      # No Go and no Python are installed on the runner itself.
+      - name: Build images
+        run: docker compose build build test
+
+      - name: go vet
+        run: docker compose run --rm build go vet ./...
+
+      - name: Go unit tests
+        run: docker compose run --rm build go test ./...
+
+      - name: Compile session-zx
+        run: docker compose run --rm build
+
+      # RECORD_CAST is unset here, so no asciinema recording happens.
+      - name: Integration tests (tmux + fzf)
+        run: docker compose run --rm -T test pytest -v
