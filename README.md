@@ -7,11 +7,15 @@ It runs inside a `tmux display-popup`.
 
 ## Demo
 
-Four real integration tests, played one after another: switch by typing a
-name, Ctrl+N preview, killing several sessions with TAB, and the action menu.
-Every frame was recorded by the test suite itself.
+Switching between tmux sessions from the popup. Each session prints its own
+name, so you can see the switch really happen.
 
 ![hoppy demo](docs/demo.webp)
+
+The original screen recording is [docs/demo.webm](docs/demo.webm).
+
+Want the same playground to try it yourself? `scripts/demo-sessions.sh` builds
+these sessions on their own tmux socket and attaches you to one.
 
 ## Install
 
